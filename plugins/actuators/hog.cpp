@@ -311,8 +311,8 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     // The result is shown
     cv::multiply(input, resultMat, resultMat);
 
-    if (mVerbose)
-        g_log(NULL, G_LOG_LEVEL_INFO, "%s - Evaluated ratio = %f", mClassName.c_str(), 1.f - (float)validPositions / (float)totalSamples);
+    //if (mVerbose)
+    //   g_log(NULL, G_LOG_LEVEL_INFO, "%s - Evaluated ratio = %f", mClassName.c_str(), 1.f - (float)validPositions / (float)totalSamples);
 
     // Constructing the message
     mLastMessage.clear();
