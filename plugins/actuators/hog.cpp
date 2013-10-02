@@ -352,8 +352,11 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
         if (mVerbose)
         {
             char lNbrStr[8];
+            cv::Scalar fontcolor;
+            if (lLost <= 0) fontcolor = cv::Scalar(255.0, 0.0, 0.0, 128.0);
+            else fontcolor = cv::Scalar(128.0, 128.0, 128.0, 128.0);
             sprintf(lNbrStr, "%i", lId);
-            cv::putText(resultMat, lNbrStr, cv::Point(lX, lY), cv::FONT_HERSHEY_COMPLEX, 0.66, cv::Scalar(128.0, 128.0, 128.0, 128.0));
+            cv::putText(resultMat, lNbrStr, cv::Point(lX, lY), cv::FONT_HERSHEY_COMPLEX, 0.66, fontcolor);
         }
 
         // Add this blob to the message
