@@ -56,14 +56,16 @@ class Blob
         void setLifetime(int time) {mTotalLifetime = mLifetime = time;}
         void renewLifetime()
         {
-            if (mLifetime < 0)
-                mLostDuration = 0;
+            // if (mLifetime < 0)
+            //     mLostDuration = 0;
+            mLostDuration = 0;
             mLifetime = mTotalLifetime;
         }
         void reduceLifetime()
         {
-            if (mLifetime < 0)
-                mLostDuration++;
+            // if (mLifetime < 0)
+            //     mLostDuration++;
+            mLostDuration++;
             mLifetime--;
         }
         int getLifetime() const {return mLifetime;}
