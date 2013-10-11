@@ -49,6 +49,7 @@
  * - gammaCorrection (float): do a gamma correction onto the image. If the image is 8bits, values are divided by 255.
  * - scale (float, default 1.0): apply scaling on the image
  * - rotation (float): apply rotation on the image, in degrees
+ * - scaleValue (float): multiply all channels by this coefficient
  * - noiseFiltering (int, default 0): set to 1 to activate noise filtering
  * - distortion (int[3]): distortion correction (see http://wiki.panotools.org/Lens_correction_model). Parameters are: [a] [b] [c]
  * - fisheye (float[2]): fisheye correction (see http://wiki.panotools.org/Fisheye_Projection). Parameters are, in pixels: [fisheyeFocal] [rectilinearFocal] 
@@ -190,6 +191,21 @@
  * OSC output:
  * - name: fiducialtracker
  * - values: Id(int) X(float) Y(float) angle(float)
+ *
+ * \subsection actuator_glsl OpenGL (GLSL) based actuator (Actuator_GLSL)
+ *
+ * Uses the GPU to modify the input image(s) according to some shaders.
+ *
+ * Number of source(s) needed: at least 1 Source_2D (only limited by the GPU)
+ *
+ * Available parameters:
+ * - vertexFile (string): path to the vertex shader
+ * - geometryFile (string): path to the geometry shader
+ * - fragmentFile (string): path to the fragment shader
+ * - glSize (float[2]): size of the rendering buffer. Parameters are: [width] [height]
+ * - uniform (string float[n]): send the specified floats as a uniform to the shaders. (1 <= n <= 4) 
+ *
+ * OSC output: none
  *
  * \subsection actuator_hog_sec Histogram of Oriented Gradients (Actuator_Hog)
  *
