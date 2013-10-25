@@ -48,6 +48,7 @@ class Texture
     private:
         GLuint mGLTex;
         cv::Size mSize;
+        int mType;
 };
 
 /*************/
@@ -98,6 +99,8 @@ class Actuator_GLSL : public Actuator
         atom::Message detect(std::vector< Capture_Ptr > pCaptures);
         void setParameter(atom::Message pMessage);
 
+        std::vector<Capture_Ptr> getOutput() const;
+
     private:
         // Attributes
         static std::string mClassName;
@@ -109,6 +112,7 @@ class Actuator_GLSL : public Actuator
         Capture_Ptr mCapture;
 
         bool isGlfw, mIsInitDone;
+        GLint mIsGLVisible;
         GLFWwindow* mWindow;
         cv::Size mGLSize;
         bool mOverrideSize;
@@ -120,7 +124,8 @@ class Actuator_GLSL : public Actuator
         std::shared_ptr<Shader> mShader;
 
         GLuint mFBO;
-        GLuint mFBOTexture;
+        std::vector<GLuint> mFBOTextures;
+        std::vector<cv::Mat> mOutputBuffers;
 
         // Methods
         void make();
@@ -131,6 +136,7 @@ class Actuator_GLSL : public Actuator
 
         void uploadTextures(std::vector<cv::Mat> pImg);
         void updateFBO();
+        void updateFBOAttachment(int pNbr);
 
         std::string readFile(std::string pName);
 };

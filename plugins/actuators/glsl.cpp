@@ -66,6 +66,7 @@ void Actuator_GLSL::make()
 
     mFrameNumber = 0;
 
+    mIsGLVisible = GL_FALSE;
     mWindow = NULL;
     mOverrideSize = false;
     mIsInitDone = false;
@@ -96,16 +97,20 @@ atom::Message Actuator_GLSL::detect(vector<Capture_Ptr> pCaptures)
     int width, height;
     glfwGetFramebufferSize(mWindow, &width, &height);
     
-    glfwHideWindow(mWindow);
+    if (mIsGLVisible == GL_FALSE)
+        glfwHideWindow(mWindow);
+
     if (!mOverrideSize && (width != capture.cols || height != capture.rows))
     {
         mGLSize = cv::Size(capture.cols, capture.rows);
         glfwSetWindowSize(mWindow, mGLSize.width, mGLSize.height);
+        updateFBO();
     }
     else if (mOverrideSize && (width != mGLSize.width || height != mGLSize.height))
     {
         glfwShowWindow(mWindow);
         glfwSetWindowSize(mWindow, mGLSize.width, mGLSize.height);
+        updateFBO();
     }
 
     glViewport(0, 0, mGLSize.width, mGLSize.height);
@@ -116,16 +121,35 @@ atom::Message Actuator_GLSL::detect(vector<Capture_Ptr> pCaptures)
         glm::mat4 viewProjectionMatrix = glm::ortho(-1.f, 1.f, -1.f, 1.f);
         mShader->setViewProjectionMatrix(viewProjectionMatrix);
 
-        GLenum renderBuffers[] = {GL_BACK};
-        glDrawBuffers(1, renderBuffers);
+        GLenum fboBuffers[mFBOTextures.size()];
+        for (int i = 0; i < mFBOTextures.size(); ++i)
+            fboBuffers[i] = GL_COLOR_ATTACHMENT0 + i;
+
+        glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
+        glDrawBuffers(mFBOTextures.size(), fboBuffers);
         glClear(GL_COLOR_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLES, 0, 6);
-        
-        cv::Mat buffer = cv::Mat::zeros(mGLSize, CV_8UC3);
-        glReadPixels(0, 0, mGLSize.width, mGLSize.height, GL_BGR, GL_UNSIGNED_BYTE, buffer.data);
-        cv::flip(buffer, mOutputBuffer, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        glfwSwapBuffers(mWindow);
+        glActiveTexture(GL_TEXTURE0);
+        mOutputBuffers.resize(mFBOTextures.size());
+        for (int i = 0; i < mFBOTextures.size(); ++i)
+        {
+            glBindTexture(GL_TEXTURE_2D, mFBOTextures[i]);
+            cv::Mat buffer = cv::Mat::zeros(mGLSize, CV_8UC3);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_BGR, GL_UNSIGNED_BYTE, buffer.data);
+            cv::flip(buffer, mOutputBuffers[i], 0);
+        }
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        if (mIsGLVisible)
+        {
+            GLenum renderBuffers[] = {GL_BACK};
+            glDrawBuffers(1, renderBuffers);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glfwSwapBuffers(mWindow);
+        }
     }
     else
     {
@@ -155,7 +179,7 @@ void Actuator_GLSL::initGL()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_FALSE);
 
-    glfwWindowHint(GLFW_VISIBLE, GL_FALSE);
+    glfwWindowHint(GLFW_VISIBLE, mIsGLVisible);
     mGLSize = cv::Size(640, 480);
     mWindow = glfwCreateWindow(mGLSize.width, mGLSize.height, "Actuator_GLSL", NULL, NULL);
     if (!mWindow)
@@ -166,6 +190,7 @@ void Actuator_GLSL::initGL()
 
     initGeometry();
     initShader();
+    initFBO();
 
     mIsInitDone = true;
 
@@ -218,8 +243,10 @@ void Actuator_GLSL::initFBO()
     glGenFramebuffers(1, &mFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
 
-    glGenTextures(1, &mFBOTexture);
-    glBindTexture(GL_TEXTURE_2D, mFBOTexture);
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    mFBOTextures.push_back(texture);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -228,13 +255,13 @@ void Actuator_GLSL::initFBO()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, mGLSize.width, mGLSize.height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
     glBindTexture(GL_TEXTURE_2D, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mFBOTexture, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE)
         g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Error while initializing framebuffer object", mClassName.c_str());
     else
-        g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Framebuffer object successfully initialized", mClassName.c_str());
+        g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Framebuffer object successfully initialized", mClassName.c_str());
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -256,12 +283,55 @@ void Actuator_GLSL::uploadTextures(vector<cv::Mat> pImg)
 /*************/
 void Actuator_GLSL::updateFBO()
 {
-    if (glIsTexture(mFBOTexture) == GL_FALSE)
+    if (mFBOTextures.size() == 0 || glIsTexture(mFBOTextures[0]) == GL_FALSE)
         return;
 
-    glBindTexture(GL_TEXTURE_2D, mFBOTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, mGLSize.width, mGLSize.height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    for (int i = 0; i < mFBOTextures.size(); ++i)
+    {
+        glBindTexture(GL_TEXTURE_2D, mFBOTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, mGLSize.width, mGLSize.height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+}
+
+/*************/
+void Actuator_GLSL::updateFBOAttachment(int pNbr)
+{
+    glGetError();
+    if (pNbr == mFBOTextures.size())
+        return;
+    else if (pNbr < mFBOTextures.size())
+    {
+        for (int i = pNbr; i < mFBOTextures.size(); ++i)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, mFBOTextures[i], 0);
+            glDeleteTextures(1, &mFBOTextures[i]);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+        mFBOTextures.resize(pNbr);
+    }
+    else
+    {
+        for (int i = mFBOTextures.size(); i < pNbr; ++i)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
+            GLuint texture;
+            glGenTextures(1, &texture);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            mFBOTextures.push_back(texture);
+        
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, mGLSize.width, mGLSize.height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, texture, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+    }
 }
 
 /*************/
@@ -360,10 +430,34 @@ void Actuator_GLSL::setParameter(atom::Message pMessage)
         else if (card == 2)
             mShader->setUniform(name, glm::dvec4(values[0], values[1], values[2], values[3]));
     }
+    else if (cmd == "outputNbr")
+    {
+        float nbr;
+        if (readParam(pMessage, nbr) && nbr >= 1.f)
+            updateFBOAttachment(nbr);
+    }
+    else if (cmd == "visible")
+    {
+        float visible;
+        if (readParam(pMessage, visible))
+            mIsGLVisible = (visible > 0.f) ? GL_TRUE : GL_FALSE;
+    }
     else
         setBaseParameter(pMessage);
         
     glfwMakeContextCurrent(NULL);
+}
+
+/*************/
+vector<Capture_Ptr> Actuator_GLSL::getOutput() const
+{
+    vector<Capture_Ptr> outputVec;
+    for_each (mOutputBuffers.begin(), mOutputBuffers.end(), [&] (const cv::Mat& buffer)
+    {
+        outputVec.push_back(Capture_2D_Mat_Ptr(new Capture_2D_Mat(buffer.clone())));
+    });
+
+    return outputVec;
 }
 
 /*************/
@@ -373,6 +467,7 @@ Texture::Texture()
 {
     glGenTextures(1, &mGLTex);
     mSize = cv::Size(0, 0);
+    mType = -1;
 }
 
 /*************/
@@ -392,7 +487,7 @@ Texture& Texture::operator=(const cv::Mat& pImg)
     cv::flip(pImg, buffer, 0);
 
     glGetError();
-    if (mSize != pImg.size() || !glIsTexture(mGLTex))
+    if (mSize != pImg.size() || mType != pImg.type() || !glIsTexture(mGLTex))
     {
         glDeleteTextures(1, &mGLTex);
         glGenTextures(1, &mGLTex);
@@ -404,17 +499,55 @@ Texture& Texture::operator=(const cv::Mat& pImg)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, buffer.cols, buffer.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, buffer.data);
+
+        if (pImg.type() == CV_8UC3)
+        {
+            g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Created a new texture of type GL_UNSIGNED_BYTE, format GL_BGR", "Texture");
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, buffer.cols, buffer.rows, 0, GL_BGR, GL_UNSIGNED_BYTE, buffer.data);
+        }
+        else if (pImg.type() == CV_8UC1)
+        {
+            g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Created a new texture of type GL_UNSIGNED_BYTE, format GL_RED", "Texture");
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, buffer.cols, buffer.rows, 0, GL_RED, GL_UNSIGNED_BYTE, buffer.data);
+        }
+        else if (pImg.type() == CV_32FC3)
+        {
+            g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Created a new texture of type GL_FLOAT, format GL_BGR", "Texture");
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, buffer.cols, buffer.rows, 0, GL_BGR, GL_FLOAT, buffer.data);
+        }
+        else if (pImg.type() == CV_32FC1)
+        {
+            g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Created a new texture of type GL_FLOAT, format GL_RED", "Texture");
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, buffer.cols, buffer.rows, 0, GL_RED, GL_FLOAT, buffer.data);
+        }
+        else
+        {
+            g_log(NULL, G_LOG_LEVEL_ERROR, "%s - Unsupported texture format", "Texture");
+            return *this;
+        }
+
         glGenerateMipmap(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, 0);
 
         mSize = pImg.size();
+        mType = pImg.type();
     }
     else
     {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, mGLTex);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, buffer.cols, buffer.rows, GL_BGR, GL_UNSIGNED_BYTE, buffer.data);
+
+        if (mType == CV_8UC3)
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, buffer.cols, buffer.rows, GL_BGR, GL_UNSIGNED_BYTE, buffer.data);
+        else if (mType == CV_8UC1)
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, buffer.cols, buffer.rows, GL_RED, GL_UNSIGNED_BYTE, buffer.data);
+        else if (mType == CV_32FC3)
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, buffer.cols, buffer.rows, GL_BGR, GL_FLOAT, buffer.data);
+        else if (mType = CV_32FC1)
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, buffer.cols, buffer.rows, GL_RED, GL_FLOAT, buffer.data);
+        else
+            return *this; // This should never happen due to the previous test of type
+
         glGenerateMipmap(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
