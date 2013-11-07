@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Emmanuel Durand
+ * Copyright (C) 2013 Emmanuel Durand
  *
  * This file is part of blobserver.
  *
@@ -19,14 +19,16 @@
  */
 
 /*
- * @nop.h
+ * @python.h
  * The Actuator_Python class.
  */
 
-#ifndef NOP_H
-#define NOP_H
+#ifndef PYTHON_H
+#define PYTHON_H
 
 #include "actuator.h"
+
+#include <Python.h>
 
  /*************/
 // Class Actuator_Python
@@ -35,14 +37,13 @@ class Actuator_Python : public Actuator
     public:
         Actuator_Python();
         Actuator_Python(int pParam);
+        ~Actuator_Python();
 
         static std::string getClassName() {return mClassName;}
         static std::string getDocumentation() {return mDocumentation;}
 
         atom::Message detect(std::vector< Capture_Ptr > pCaptures);
         void setParameter(atom::Message pMessage);
-
-        Capture_Ptr getOutput() const {return mCapture;}
 
     private:
         static std::string mClassName;
@@ -51,11 +52,18 @@ class Actuator_Python : public Actuator
         static unsigned int mSourceNbr;
         unsigned int mFrameNumber;
 
-        Capture_Ptr mCapture;
+        bool mIsFileLoaded;
+        PyObject* mPythonMain;
+        PyObject* mPythonGlobal;
+        PyObject* mPythonModule;
+
+        PyObject* mPythonOutput;
+        PyObject* mRawCapture;
+        int mRawRows, mRawCols, mRawChannels;
 
         void make();
 };
 
 REGISTER_ACTUATOR(Actuator_Python)
 
-#endif // NOP_H
+#endif // PYTHON_H

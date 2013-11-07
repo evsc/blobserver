@@ -27,8 +27,12 @@ Source_2D::Source_2D()
 
     mFilterNoise = false;
 
+    mGammaCorrection = false;
+    mGammaCorrectionValue = 1.f;
+
     mScale = 1.f;
     mRotation = 0.f;
+    mScaleValues = 1.f;
 
     mCorrectDistortion = false;
     mCorrectFisheye = false;
@@ -89,6 +93,8 @@ Capture_Ptr Source_2D::retrieveFrame()
             correctVignetting(buffer);
         if (mICCTransform != NULL)
             cmsDoTransform(mICCTransform, buffer.data, buffer.data, buffer.total());
+        if (mGammaCorrection)
+            correctGamma(buffer);
         if (mCorrectDistortion)
             correctDistortion(buffer);
         if (mCorrectFisheye)
@@ -97,6 +103,8 @@ Capture_Ptr Source_2D::retrieveFrame()
             scale(buffer);
         if (mRotation != 0.f)
             rotate(buffer);
+        if (mScaleValues != 1.f)
+            buffer *= mScaleValues;
         if (mHdriActive)
             lResult &= createHdri(buffer);
 
@@ -176,6 +184,15 @@ void Source_2D::setBaseParameter(atom::Message pParam)
                 mFilterNoise = false;
         }
     }
+    else if (paramName == "gammaCorrection")
+    {
+        float g;
+        if (readParam(pParam, g))
+        {
+            mGammaCorrectionValue = g;
+            mGammaCorrection = true;
+        }
+    }
     else if (paramName == "scale")
     {
         float scale;
@@ -185,6 +202,10 @@ void Source_2D::setBaseParameter(atom::Message pParam)
     else if (paramName == "rotation")
     {
         readParam(pParam, mRotation);
+    }
+    else if (paramName == "scaleValues")
+    {
+        readParam(pParam, mScaleValues);
     }
     else if (paramName == "distortion")
     {
@@ -397,7 +418,7 @@ atom::Message Source_2D::getBaseParameter(atom::Message pParam) const
 
     msg.push_back(pParam[0]);
     if (paramName == "id")
-        msg.push_back(atom::FloatValue::create(mId));
+        msg.push_back(atom::StringValue::create(mId.c_str()));
 
     return msg;
 }
@@ -488,6 +509,23 @@ void Source_2D::correctVignetting(cv::Mat& pImg)
     }
 
     cv::multiply(pImg, mVignettingMat, pImg, 1.0, pImg.type());
+}
+
+/************/
+void Source_2D::correctGamma(cv::Mat& pImg)
+{
+    int depth = pImg.depth();
+    cv::Mat buffer;
+    pImg.convertTo(buffer, CV_32F);
+    if (depth == CV_8U)
+    {
+        cv::pow(buffer / 255.f, mGammaCorrectionValue, buffer);
+        buffer *= 255.f;
+    }
+    else
+        cv::pow(buffer, mGammaCorrectionValue, buffer);
+        
+    buffer.convertTo(pImg, depth);
 }
 
 /************/
@@ -608,7 +646,7 @@ cmsHTRANSFORM Source_2D::loadICCTransform(std::string pFile)
 /*************/
 void Source_2D::applyAutoExposure(cv::Mat& pImg)
 {
-    if (pImg.channels() != 3)
+    if (pImg.channels() != 3 && pImg.channels() != 1)
         return;
 
     // TODO: Allow to chose the colorspace for luminance computation
@@ -620,7 +658,7 @@ void Source_2D::applyAutoExposure(cv::Mat& pImg)
     roi.height = min(roi.height, pImg.rows - 1 - roi.y);
 
     cv::Mat buffer;
-    pImg.convertTo(buffer, CV_32FC3);
+    pImg.convertTo(buffer, CV_32F);
     buffer /= 255.f;
     cv::pow(buffer, 1/mGamma, buffer); // Conversion from sRGB to RGB
 
@@ -629,13 +667,21 @@ void Source_2D::applyAutoExposure(cv::Mat& pImg)
     for (int x = roi.x; x < roi.x + roi.width && x < buffer.cols; ++x)
         for (int y = roi.y; y < roi.y + roi.height && x < buffer.rows; ++y)
         {
-            float r, g, b;
-            r = buffer.at<cv::Vec3f>(y, x)[0];
-            g = buffer.at<cv::Vec3f>(y, x)[1];
-            b = buffer.at<cv::Vec3f>(y, x)[2];
+            if (pImg.channels() == 3)
+            {
+                float r, g, b;
+                r = buffer.at<cv::Vec3f>(y, x)[0];
+                g = buffer.at<cv::Vec3f>(y, x)[1];
+                b = buffer.at<cv::Vec3f>(y, x)[2];
 
-            luminance += 0.2126f * r + 0.7152f * g + 0.0722f * b;
-            pixelNumber += 1.f;
+                luminance += 0.2126f * r + 0.7152f * g + 0.0722f * b;
+                pixelNumber += 1.f;
+            }
+            else if (pImg.channels() == 1)
+            {
+                luminance += buffer.at<float>(y, x);
+                pixelNumber += 1.f;
+            }
         }
 
     if (pixelNumber == 0)
@@ -656,10 +702,10 @@ void Source_2D::applyAutoExposure(cv::Mat& pImg)
     message.push_back(atom::FloatValue::create(exposure));
     setParameter(message);
 
-    g_log(NULL, G_LOG_LEVEL_DEBUG, "%s %i %i: exposureTime  %f", mName.c_str(), mSubsourceNbr, mId, exposure);
+    g_log(NULL, G_LOG_LEVEL_DEBUG, "%s %s: exposureTime  %f", mName.c_str(), mSubsourceNbr.c_str(), exposure);
 
     // Lastly, we log-broadcast the changes
-    g_log(LOG_BROADCAST, G_LOG_LEVEL_INFO, "exposureTime %s %i %i %f", mName.c_str(), mSubsourceNbr, mId, exposure);
+    g_log(LOG_BROADCAST, G_LOG_LEVEL_INFO, "exposureTime %s %s %f", mName.c_str(), mSubsourceNbr.c_str(), exposure);
 }
 
 /*************/
@@ -685,7 +731,7 @@ bool Source_2D::createHdri(cv::Mat& pImg)
     {
         mHdriBuilder.addLDR(pImg, getEV());
         ldriCount++;
-        g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Exposure value for source %i, HDR step %i : %f", mClassName.c_str(), mId, ldriCount, getEV());
+        g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Exposure value for source %s, HDR step %i : %f", mClassName.c_str(), mSubsourceNbr.c_str(), ldriCount, getEV());
     }
 
     skipFrame = (skipFrame + 1) % mHdriFrameSkip;

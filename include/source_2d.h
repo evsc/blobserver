@@ -195,8 +195,11 @@ class Source_2D : public Source
         // Basic geometric correction parameters
         float mScale;
         float mRotation;
+        float mScaleValues;
 
         // Distorsion parameters
+        bool mGammaCorrection; //!< Flag set if gamma correction is activated
+        float mGammaCorrectionValue;
         bool mCorrectDistortion; //!< Flag set if distortion correction is activated
         bool mCorrectFisheye; //!< Flag set if fisheye correction is activated
         bool mCorrectVignetting; //!< Flag set if vignetting correction is activated
@@ -243,6 +246,9 @@ class Source_2D : public Source
 
         // Noise correction
         void filterNoise(cv::Mat& pImg);
+
+        // Gamma correction
+        void correctGamma(cv::Mat& pImg);
 
         // Basic geometric corrections
         void scale(cv::Mat& pImg);

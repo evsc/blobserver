@@ -46,8 +46,10 @@
  * - autoExposure (int[7]): parameters for auto exposure, measured in a specified area. Parameters are: [x] [y] [width] [height] [target] [margin] [updateStep%].
  * - exposureLUT (float[2 + i*2]): specify a LUT for the exposure. Parameters are: [number of keys] [interpolation type] [[in key] [out key]]. Interpolation should currently be set to 0
  * - gainLUT (float[2 + i*2]): specify a LUT for the gain. Parameters are: [number of keys] [interpolation type] [[in key] [out key]]. Interpolation should currently be set to 0
+ * - gammaCorrection (float): do a gamma correction onto the image. If the image is 8bits, values are divided by 255.
  * - scale (float, default 1.0): apply scaling on the image
  * - rotation (float): apply rotation on the image, in degrees
+ * - scaleValue (float): multiply all channels by this coefficient
  * - noiseFiltering (int, default 0): set to 1 to activate noise filtering
  * - distortion (int[3]): distortion correction (see http://wiki.panotools.org/Lens_correction_model). Parameters are: [a] [b] [c]
  * - fisheye (float[2]): fisheye correction (see http://wiki.panotools.org/Fisheye_Projection). Parameters are, in pixels: [fisheyeFocal] [rectilinearFocal] 
@@ -61,7 +63,6 @@
  * Note that OpenCV must have been compiled with the desired camera support.
  * 
  * Available parameters:
- * - cameraNumber (int): camera index as per OpenCV numbering. Setting this to 0 will use the first camera found.
  * - width (int)
  * - height (int)
  * - framerate (int)
@@ -93,7 +94,6 @@
  * 
  * Available parameters:
  * - location (string): file path to the shmdata
- * - cameraNumber (int): index of the shmdata, this can be used to access multiple times the same shmdata
  *
  * \subsection source_3d_shmdata_sec shmdata 3D sources (Source_3D_Shmdata)
  *
@@ -101,7 +101,6 @@
  *
  * Available parameters:
  * - location (string): file path to the shmdata
- * - cameraNumber (int): index of the shmdata, this can be used to access multiple times the same shmdata
  * 
  **************
  * \section actuators_sec List of actuators
@@ -119,6 +118,10 @@
  * - mainAxis (int, default 0): specifies the main axis (meaning the axis of the body). 0, 1, 2 are for X, Y, Z. -1 is for autodetection
  * - maxManhattanDistance (float, default 0.1): maximum distance between the center of the arm's cloud and its neighbours
  * - minCloudSize (int, default 50): if the number of points in the cloud is lower than this value, the position is not outputted (used to get rid of noise)
+ *
+ * OSC output:
+ * - name: armPcl
+ * - values: Id(int) X(float) Y(float) Z(float)
  *
  * \subsection actuator_bgsubtractor_sec Background subtractor using mixtures of gaussians as models (Actuator_BgSubtractor)
  *
@@ -139,11 +142,11 @@
  *
  * OSC output:
  * - name: bgsubtractor
- * - values: X(int) Y(int) Size(int) dX(float) dY(float) Id(int) Age(int) lostDuration(int)
+ * - values: Id(int) X(int) Y(int) Size(int) dX(float) dY(float) Age(int) lostDuration(int)
  *
  * \subsection actuator_clusterpcl_sec Clusters of point clouds (Actuator_ClusterPcl)
  *
- * This actuator outputs the number of distinct clusters it can find in the input point cloud
+ * This actuator outputs the position of each cluster it can find in a point cloud.
  *
  * Number of source(s) needed: 1 Source_3D
  *
@@ -151,6 +154,10 @@
  * - minClusterSize (int, default 50): minimum number of points for a cluster to be kept
  * - maxClusterSize (int, default 25000): maximum number of points for a cluster to be kept
  * - clusterTolerance (float, default 0.03): maximum distance between two points to consider them as neighbours
+ *
+ * OSC output:
+ * - name: clusterPcl
+ * - values: Id(int) X(float) Y(float) Z(float)
  *
  * \subsection actuator_depthtouch_sec Adding touch interaction to surfaces using depth map (Actuator_DepthTouch)
  *
@@ -171,7 +178,34 @@
  *
  * OSC output:
  * - name: depthtouch
- * - values: X(int) Y(int) dX(float) dY(float) Id(int)
+ * - values: Id(int) X(int) Y(int) dX(float) dY(float) contact(int)
+ *
+ * \subsection actuator_fiducialtracker_sec Fiducial markers tracking (Actuator_FiducialTracker)
+ *
+ * This actuator is dedicated to tracking fiducial markers like the one used for reacTIVision (see http://reactivision.sourceforge.net/). The marker detection has been taken from reacTIVision and integrated inside blobserver, so that it can take advantage of the other functionalities of blobserver like camera stitching.
+ *
+ * Number of source(s) needed: 1 Source_2D
+ *
+ * Available parameters: None
+ *
+ * OSC output:
+ * - name: fiducialtracker
+ * - values: Id(int) X(float) Y(float) angle(float)
+ *
+ * \subsection actuator_glsl OpenGL (GLSL) based actuator (Actuator_GLSL)
+ *
+ * Uses the GPU to modify the input image(s) according to some shaders.
+ *
+ * Number of source(s) needed: at least 1 Source_2D (only limited by the GPU)
+ *
+ * Available parameters:
+ * - vertexFile (string): path to the vertex shader
+ * - geometryFile (string): path to the geometry shader
+ * - fragmentFile (string): path to the fragment shader
+ * - glSize (float[2]): size of the rendering buffer. Parameters are: [width] [height]
+ * - uniform (string float[n]): send the specified floats as a uniform to the shaders. (1 <= n <= 4) 
+ *
+ * OSC output: none
  *
  * \subsection actuator_hog_sec Histogram of Oriented Gradients (Actuator_Hog)
  *
@@ -199,7 +233,7 @@
  *
  * OSC output:
  * - name: hog
- * - values: X(int) Y(int) dX(int) dY(int) Id(int) Age(int) lostDuration(int)
+ * - values: Id(int) X(int) Y(int) dX(int) dY(int) Age(int) lostDuration(int)
  * 
  * \subsection actuator_lightspot_sec Light spots (Actuator_LightSpots)
  * 
@@ -215,7 +249,7 @@
  * 
  * OSC output:
  * - name: lightSpots
- * - values: X(int) Y(int) Size(int) dX(int) dY(int) Id(int)
+ * - values: Id(int) X(int) Y(int) Size(int) dX(int) dY(int)
  * 
  * \subsection actuator_mean_outliers_sec Mean outliers (Actuator_MeanOutliers)
  * 
@@ -231,7 +265,7 @@
  * 
  * OSC output:
  * - name: meanOutliers
- * - values: X(int) Y(int) Size(int) dX(int) dY(int)
+ * - values: Id(int) X(int) Y(int) Size(int) dX(int) dY(int)
  *
  * \subsection actuator_objonaplane_sec Objects on a plane (Actuator_ObjOnAPlane)
  *
@@ -250,6 +284,23 @@
  * - minBlobArea (int, default 32): minimum size of a blob to not be considered as noise.
  * - maxTrackedBlobs (int, default 16): maximum number of blobs to track
  *
+ * OSC output:
+ * - name: objOnAPlane
+ * - values: Id(int) X(int) Y(int) Size(int) dX(int) dY(int)
+ *
+ * \subsection actuator_python_sec Python scripted actuator (Actuator_Python)
+ *
+ * Use the power of Python to prototype new actuators! The input script must contain a function with the same name as the file, and a single parameter: the input image as a list of integers. Its output must be a list of numbers.
+ *
+ * Number of source(s) needed: 1 Source_2D
+ *
+ * Available parameters:
+ * - file (string): filename of the python script, without extension.
+ *
+ * OSC output:
+ * - name: same as the 'file' parameter
+ * - values: depends on what the Python script outputs.
+ *
  * \subsection actuator_stitch_sec Stitching (Actuator_Stitch)
  * 
  * This actuator stitches any number of 2D images into one, according to the input parameters.
@@ -259,6 +310,8 @@
  * Available parameters:
  * - cropInput (int[5], no default): crop parameters for the source given by the first value. Parameters are: [sourceIndex] [x] [y] [width] [height]
  * - transform (float[4], no default): translation and rotation parameters for the given source. Parameters are: [sourceIndex] [x] [y] [angle in degree]
+ *
+ * OSC output: None
  *
  **************
  * \section howto_xml_sec How to use Blobserver - Configuration through a XML file
