@@ -60,6 +60,11 @@ class Actuator
         Actuator(int pParam);
 
         /**
+         * \brief Destructor
+         */
+        virtual ~Actuator() {};
+
+        /**
          * \brief Gets the class name of the actuator
          */
         static std::string getClassName() {return mClassName;}
@@ -121,7 +126,7 @@ class Actuator
         /**
          * \brief Gets the resulting image from the actuator.
          */
-        virtual Capture_Ptr getOutput() const {return Capture_2D_Mat_Ptr(new Capture_2D_Mat(mOutputBuffer.clone()));}
+        virtual std::vector<Capture_Ptr> getOutput() const;
 
     protected:
         cv::Mat mOutputBuffer; //!< The output buffer, resulting from the detection

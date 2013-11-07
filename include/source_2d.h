@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include <glib.h>
@@ -89,7 +90,7 @@ class Source_2D : public Source
         /**
          * \brief Destructor
          */
-        ~Source_2D();
+        virtual ~Source_2D();
 
         /**
          * \return Returns the class name of the source
@@ -186,6 +187,11 @@ class Source_2D : public Source
         static std::string mClassName; //!< Class name, to be set in child class
         static std::string mDocumentation; //!< Class documentation, to be set in child class
 
+        // Thread in which corrections are applied
+        std::shared_ptr<std::thread> mCorrectionThread;
+        std::mutex mCorrectionMutex;
+        bool mIsRunning;
+
         // Mask
         cv::Mat mMask;
         
@@ -240,6 +246,9 @@ class Source_2D : public Source
         // Methods
         /************/
         float getEV();
+
+        // Raw frame correction method
+        void applyCorrections();
 
         // Mask
         void applyMask(cv::Mat& pImg);

@@ -204,6 +204,8 @@
  * - fragmentFile (string): path to the fragment shader
  * - glSize (float[2]): size of the rendering buffer. Parameters are: [width] [height]
  * - uniform (string float[n]): send the specified floats as a uniform to the shaders. (1 <= n <= 4) 
+ * - outputNbr (int, default 1): specifies the number of outputs for the rendering (ie, the number of layout available in GLSL)
+ * - visible (int, default 0): if set to 1, the OpenGL window will be visible in a view independent from the main blobserver window
  *
  * OSC output: none
  *
@@ -222,6 +224,8 @@
  * - roiSize (int[2], default 64 128): size (in pixels) of the detection window
  * - blockSize (int[2], default 2 2): size (in cells) where normalization is applied
  * - cellSize (int[2], default 16 16): size (in pixels) of a histogram of oriented gradients cell
+ * - cellMaxSize (int[2], default 0 0): maximum size (in pixels) of a HoG cell, this activates multiscale analysis
+ * - cellStep (float[2], default 2 2): factor in both directions to go from cellSize to cellMaxSize, in a multiscale context
  * - bins (int, default 9): number of orientations to consider
  * - margin (float, default 0.0): margin to the hyperplane to add to the detection (higher = less false positives and less hit rate)
  * - lifetime (int, default 30): time (in frames) during which a blob is kept even if not detected
