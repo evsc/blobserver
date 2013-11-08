@@ -56,6 +56,7 @@ Source_2D::Source_2D()
     mHdriActive = false;
 
     mSaveToFile = false;
+    enableRecording = false;
     mSaveIndex = 0;
     mSavePhase = 0;
 
@@ -418,6 +419,24 @@ void Source_2D::setBaseParameter(atom::Message pParam)
         {
             mSaveToFile = false;
         }
+    }
+    else if (paramName == "enableRecording")
+    {
+        float enable;
+
+        if (!readParam(pParam, enable, 1))
+            return;
+
+        if (enable > 0) {
+            enableRecording = true;
+            cout << "setBaseParameter :: enableRecording :: true" << endl;
+        } 
+        else 
+        {
+            enableRecording = false;
+            cout << "setBaseParameter :: enableRecording :: false" << endl;
+        }
+        
     }
 }
 
@@ -788,7 +807,7 @@ bool Source_2D::createHdri(cv::Mat& pImg)
 /*************/
 void Source_2D::saveToFile(cv::Mat& pImg)
 {
-    if (mSavePhase == 0)
+    if (mSavePhase == 0 && enableRecording == true)
     {
         char buffer[16];
         sprintf(buffer, "%05i", mSaveIndex);

@@ -238,6 +238,7 @@ class Source_2D : public Source
 
         // File saving
         bool mSaveToFile;
+        bool enableRecording;
         std::string mBaseFilename;
         int mSavePeriod;
         int mSaveIndex, mSavePhase;
