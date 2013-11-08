@@ -89,7 +89,7 @@ static GOptionEntry gEntries[] =
     {"position", 0, 0, G_OPTION_ARG_STRING, &gPosition, "Specifies the position where to create the positives descriptors (default: '16x16')", NULL},
     {"cell-size", 0, 0, G_OPTION_ARG_STRING, &gCellSize, "Specifies the size of the cells (in pixels) of descriptors (default: '8x8')", NULL},
     {"cell-max-size", 0, 0, G_OPTION_ARG_STRING, &gCellMaxSize, "Specifies the maximum size of the cells, when using multiscale training (default: 0x0)", NULL},
-    {"cell-step", 0, 0, G_OPTION_ARG_STRING, &gCellStep, "Specifies the step factor between cell size, when using multiscale training (default: '1x1'", NULL},
+    {"cell-step", 0, 0, G_OPTION_ARG_STRING, &gCellStep, "Specifies the step factor between cell size, when using multiscale training (default: '2x2'", NULL},
     {"block-size", 0, 0, G_OPTION_ARG_STRING, &gBlockSize, "Specifies the size of the blocks over which cells are normalized (default: '3x3')", NULL},
     {"roi-size", 0, 0, G_OPTION_ARG_STRING, &gRoiSize, "Specifies the size (in pixels) of the ROI from which to create descriptors (default: '64x128')", NULL},
     {"sigma", 0, 0, G_OPTION_ARG_DOUBLE, &gSigma, "Specifies the sigma parameter for the gaussian kernel applied over blocks (default: 1.0)", NULL},
@@ -390,9 +390,9 @@ void testSVM(vector<string>& pPositiveFiles, vector<string>& pNegativeFiles, Des
         chronoTime = chrono::duration_cast<chrono::microseconds>(chronoStart.time_since_epoch()).count();
         pDescriptor.setImage(image);
 
-        for (int x = 0; x < image.cols - _roiSize.x; x += image.cols/5)
+        for (int x = 0; x <= image.cols - _roiSize.x; x += image.cols/5)
         {
-            for (int y = 0; y < image.rows - _roiSize.y; y += image.rows/5)
+            for (int y = 0; y <= image.rows - _roiSize.y; y += image.rows/5)
             {
                 vector<float> description = pDescriptor.getDescriptor(_roiPosition + cv::Point_<int>(x, y));
                 cv::Mat descriptionMat(1, (int)description.size(), CV_32FC1, &description[0]);
