@@ -372,10 +372,11 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
         mLastMessage.push_back(atom::IntValue::create(lAge));
         mLastMessage.push_back(atom::IntValue::create(lLost));
 
-        // add movement info
-        mLastMessage.push_back(atom::IntValue::create(movement));
     }
 
+    // add movement info
+    mLastMessage.push_back(atom::IntValue::create(movement));
+    
     mOutputBuffer = resultMat.clone();
 
     return mLastMessage;

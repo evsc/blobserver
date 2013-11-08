@@ -302,7 +302,7 @@ void Source_2D_Gige::setParameter(atom::Message pParam)
         arv_camera_get_exposure_time_bounds(mCamera, &min, &max);
         if (value*1e6 < min || value*1e6 > max)
         {
-            g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Exposure value out of bounds: [%f, %f]", mClassName.c_str(), min / 1e6, max / 1e6);
+            // g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Exposure value out of bounds: [%f, %f]", mClassName.c_str(), min / 1e6, max / 1e6);
             return;
         }
 

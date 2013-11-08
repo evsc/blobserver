@@ -150,6 +150,7 @@ Capture_Ptr Source_2D::retrieveFrame()
 void Source_2D::setBaseParameter(atom::Message pParam)
 {
     std::string paramName;
+
     try
     {
         paramName = atom::toString(pParam[0]);
@@ -429,12 +430,12 @@ void Source_2D::setBaseParameter(atom::Message pParam)
 
         if (enable > 0) {
             enableRecording = true;
-            cout << "setBaseParameter :: enableRecording :: true" << endl;
+            // cout << "setBaseParameter :: enableRecording :: true" << endl;
         } 
         else 
         {
             enableRecording = false;
-            cout << "setBaseParameter :: enableRecording :: false" << endl;
+            // cout << "setBaseParameter :: enableRecording :: false" << endl;
         }
         
     }
