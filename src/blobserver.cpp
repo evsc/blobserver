@@ -485,6 +485,16 @@ int App::loop()
                     lBufferNames.push_back(flow.actuator->getName());
                 });
 
+                if (flow.actuator->getName() == "Actuator_Hog") {
+                    // check last item on message
+                    int mvmnt = atom::toInt(message[7]);
+                    atom::Message msg;
+                    msg.push_back("enableRecording");
+                    msg.push_back(mvmnt);
+                    flow->sources[0]->setParameter(msg);
+                    cout << "Loop() \tActuator_Hog \t" << "enableRecording \t" << mvmnt << endl;
+                }
+
 #if HAVE_SHMDATA
                 if (flow.sink.size() < output.size())
                     for (int i = flow.sink.size(); i < output.size(); ++i)

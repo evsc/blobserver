@@ -87,6 +87,7 @@ class Actuator_Hog : public Actuator
         // Background subtractor, used to select window of interest
         // to feed to the SVM
         cv::BackgroundSubtractorMOG2 mBgSubtractor;
+        int movement;
 
         // Various variables
         cv::Mat mBgSubtractorBuffer;

@@ -142,6 +142,8 @@ void Actuator_Hog::make()
     mBlobMergeDistance = 64.f;
     mSaveSamples = false;
     mSaveSamplesAge = 120;
+
+    movement = 0;
 }
 
 /*************/
@@ -171,6 +173,7 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     cv::erode(mBgSubtractorBuffer, lEroded, cv::Mat(), cv::Point(-1, -1), mFilterSize);
 
     mBgSubtractorBuffer = cv::Mat::zeros(mBgSubtractorBuffer.size(), CV_8U);
+    movement = 0;
     for (uint x = 0; x < lEroded.cols; ++x)
         for (uint y = 0; y < lEroded.rows; ++y)
         {
@@ -178,6 +181,7 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
             {
                 cv::Rect rect(x - mRoiSize.width / 2, y - mRoiSize.height / 2, mRoiSize.width, mRoiSize.height);
                 cv::rectangle(mBgSubtractorBuffer, rect, 255, CV_FILLED);
+                movement = 1;
             }
         }
 
@@ -367,6 +371,9 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
         mLastMessage.push_back(atom::FloatValue::create(ldY));
         mLastMessage.push_back(atom::IntValue::create(lAge));
         mLastMessage.push_back(atom::IntValue::create(lLost));
+
+        // add movement info
+        mLastMessage.push_back(atom::IntValue::create(movement));
     }
 
     mOutputBuffer = resultMat.clone();
