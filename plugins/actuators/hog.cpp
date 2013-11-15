@@ -441,8 +441,9 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
     else if (cmd == "filterSize")
     {
         float filterSize;
-        if (readParam(pMessage, filterSize))
+        if (readParam(pMessage, filterSize)) {
             mFilterSize = max(1, (int)filterSize);
+        }
     }
     else if (cmd == "roiSize")
     {
@@ -524,8 +525,9 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
     else if (cmd == "lifetime")
     {
         float lifetime;
-        if (readParam(pMessage, lifetime))
+        if (readParam(pMessage, lifetime)) {
             mBlobLifetime = lifetime;
+        }
     }
     else if (cmd == "keepOldBlobs")
     {

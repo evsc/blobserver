@@ -166,7 +166,8 @@ void Source_2D::setBaseParameter(atom::Message pParam)
         if (!readParam(pParam, filename))
             return;
 
-        mMask = cv::imread(filename, CV_LOAD_IMAGE_GRAYSCALE);
+        // mMask = cv::imread(filename, CV_LOAD_IMAGE_GRAYSCALE);
+        mMask = cv::imread(filename, -1);
     }
     else if (paramName == "vignetting")
     {
@@ -482,14 +483,13 @@ void Source_2D::applyMask(cv::Mat& pImg)
         cv::resize(mMask, buffer, cv::Size(pImg.cols, pImg.rows), 0, 0, cv::INTER_NEAREST);
         mMask = buffer;
     }
-    if (mMask.depth() != pImg.type())
+    if (mMask.type() != pImg.type())
     {
         cv::Mat buffer = cv::Mat::zeros(mMask.rows, mMask.cols, pImg.type());
         mMask.convertTo(buffer, pImg.type());
         mMask = buffer;
         mMask /= 255;
     }
-
     cv::multiply(mMask, pImg, pImg);
 }
 

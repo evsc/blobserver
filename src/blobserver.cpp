@@ -730,6 +730,8 @@ int App::oscHandlerSignIn(const char* path, const char* types, lo_arg** argv, in
     atom::Message message;
     atom::message_build_from_lo_args(message, types, argv, argc);
 
+    cout << "osc handler signin \t" << message << endl;
+
     if (message.size() < 2)
     {
         g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Wrong number of arguments received.", __FUNCTION__);
@@ -1175,6 +1177,8 @@ int App::oscHandlerSetParameter(const char* path, const char* types, lo_arg** ar
 
     atom::Message message;
     atom::message_build_from_lo_args(message, types, argv, argc);
+
+    cout << "osc handler setParameter \t" << message << endl;
         
     string addressStr;
     try
