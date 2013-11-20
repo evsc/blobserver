@@ -142,6 +142,7 @@ class Actuator
         cv::Mat getMask(cv::Mat pCapture, int pInterpolation = CV_INTER_NN);
         void setBaseParameter(const atom::Message pMessage);
         std::vector<cv::Mat> captureToMat(std::vector< Capture_Ptr > pCaptures);
+        int finalDisplay;
 
     private:
         static std::string mClassName; //!< Class name, to be set in child class

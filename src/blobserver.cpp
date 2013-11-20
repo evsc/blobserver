@@ -626,14 +626,18 @@ int App::loop()
                 lSourceNumber = (lSourceNumber+1)%lBuffers.size();
                 g_log(NULL, G_LOG_LEVEL_INFO, "Buffer displayed: %s", lBufferNames[lSourceNumber].c_str());
             }
-            if (lKey == 'e' || lKey == 'd') {
-                int showEroded = (lKey == 'e') ? 1 : 0;
-
+            if (lKey == 'd') {
                 for_each (mFlows.begin(), mFlows.end(), [&] (Flow& flow) {
                     if (flow.actuator->getName() == "Actuator_Hog") {
+                        atom::Message rmsg;
+                        rmsg.push_back(atom::StringValue::create("finalDisplay"));
+                        rmsg = flow.actuator->getParameter(rmsg);
+                        int v = atom::toInt(rmsg[1]);
+                        v++;
+                        v %= 3;
                         atom::Message msg;
-                        msg.push_back(atom::StringValue::create("displayEroded"));
-                        msg.push_back(atom::FloatValue::create(showEroded));
+                        msg.push_back(atom::StringValue::create("finalDisplay"));
+                        msg.push_back(atom::FloatValue::create(v));
                         flow.actuator->setParameter(msg);
                     }
                 });

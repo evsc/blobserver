@@ -142,7 +142,7 @@ void Actuator_Hog::make()
     mBlobMergeDistance = 64.f;
     mSaveSamples = false;
     mSaveSamplesAge = 120;
-    displayEroded = false;
+    finalDisplay = 0;
 
     movement = 0;
 }
@@ -175,6 +175,7 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
 
     mBgSubtractorBuffer = cv::Mat::zeros(mBgSubtractorBuffer.size(), CV_8U);
     movement = 0;
+    int cnt = 0;
     for (uint x = 0; x < lEroded.cols; ++x)
         for (uint y = 0; y < lEroded.rows; ++y)
         {
@@ -183,16 +184,21 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
                 cv::Rect rect(x - mRoiSize.width / 2, y - mRoiSize.height / 2, mRoiSize.width, mRoiSize.height);
                 cv::rectangle(mBgSubtractorBuffer, rect, 255, CV_FILLED);
                 movement = 1;
+                cnt ++;
             }
         }
+    // cout << "eroded detection count = \t" << cnt << endl;
 
     // We draw rectangles to handle previously detected blobs
     for_each (mBlobs.begin(), mBlobs.end(), [&] (Blob2D blob)
     {
         Blob::properties props = blob.getBlob();
-        cv::Rect rect(props.position.x - props.size/2, props.position.y - props.size/2, props.size, props.size);
+        // cv::Rect rect(props.position.x - props.size/2, props.position.y - props.size/2, props.size, props.size);
+        cv::Rect rect(props.position.x, props.position.y, mRoiSize.width, mRoiSize.height);
         cv::rectangle(mBgSubtractorBuffer, rect, 255, CV_FILLED);
+        cnt ++;
     } );
+    // cout << "added previous blob count = \t" << cnt << endl;
 
     // The result is resized according to cell size
     cv::Size outputSize;
@@ -220,6 +226,7 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
             validPositions++;
         }
     int totalSamples = validPositions;
+    // cout << "rescaled, found valid positions = \t" << totalSamples << endl;
 
     // We go randomly through this list
     vector<cv::Point> samples;
@@ -380,10 +387,14 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     mLastMessage.push_back(atom::IntValue::create(movement));
     
 
-    if (displayEroded) {
+    if (finalDisplay == 1) {
         cv::Mat in[] = {lEroded, lEroded, lEroded};
         cv::merge(in, 3, lEroded);
         mOutputBuffer = lEroded.clone();
+    } else if (finalDisplay ==2) {
+        cv::Mat in[] = {mBgSubtractorBuffer, mBgSubtractorBuffer, mBgSubtractorBuffer};
+        cv::merge(in, 3, mBgSubtractorBuffer);
+        mOutputBuffer = mBgSubtractorBuffer.clone();
     } else mOutputBuffer = resultMat.clone();
 
     return mLastMessage;
@@ -567,16 +578,13 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
         else
             mSaveSamples = false;
     }
-    else if (cmd == "displayEroded")
+    else if (cmd == "finalDisplay")
     {
         float disp;
         if (!readParam(pMessage, disp))
             return;
 
-        if (disp == 1.f)
-            displayEroded = true;
-        else
-            displayEroded = false;
+        finalDisplay = int(disp);
     }
     else if (cmd == "saveSamplesAge")
     {
