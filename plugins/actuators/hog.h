@@ -91,6 +91,8 @@ class Actuator_Hog : public Actuator
 
         // Various variables
         cv::Mat mBgSubtractorBuffer;
+        bool displayEroded;
+        cv::Mat lEroded;
         cv::RNG mRng;
         float mBlobMergeDistance; // Distance to considerer two blobs as one
         bool mSaveSamples; // If true, save samples older than mSaveSamplesAge

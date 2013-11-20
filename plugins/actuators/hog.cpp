@@ -142,6 +142,7 @@ void Actuator_Hog::make()
     mBlobMergeDistance = 64.f;
     mSaveSamples = false;
     mSaveSamplesAge = 120;
+    displayEroded = false;
 
     movement = 0;
 }
@@ -168,7 +169,7 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     // and previous blobs positions
     mBgSubtractor(input, mBgSubtractorBuffer);
     // Erode and dilate to suppress noise
-    cv::Mat lEroded;
+    // cv::Mat lEroded;
     cv::threshold(mBgSubtractorBuffer, mBgSubtractorBuffer, 250, 255, cv::THRESH_BINARY);
     cv::erode(mBgSubtractorBuffer, lEroded, cv::Mat(), cv::Point(-1, -1), mFilterSize);
 
@@ -378,7 +379,12 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     // add movement info
     mLastMessage.push_back(atom::IntValue::create(movement));
     
-    mOutputBuffer = resultMat.clone();
+
+    if (displayEroded) {
+        cv::Mat in[] = {lEroded, lEroded, lEroded};
+        cv::merge(in, 3, lEroded);
+        mOutputBuffer = lEroded.clone();
+    } else mOutputBuffer = resultMat.clone();
 
     return mLastMessage;
 }
@@ -560,6 +566,17 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
             mSaveSamples = true;
         else
             mSaveSamples = false;
+    }
+    else if (cmd == "displayEroded")
+    {
+        float disp;
+        if (!readParam(pMessage, disp))
+            return;
+
+        if (disp == 1.f)
+            displayEroded = true;
+        else
+            displayEroded = false;
     }
     else if (cmd == "saveSamplesAge")
     {
