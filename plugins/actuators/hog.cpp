@@ -193,8 +193,8 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     for_each (mBlobs.begin(), mBlobs.end(), [&] (Blob2D blob)
     {
         Blob::properties props = blob.getBlob();
-        // cv::Rect rect(props.position.x - props.size/2, props.position.y - props.size/2, props.size, props.size);
-        cv::Rect rect(props.position.x, props.position.y, mRoiSize.width, mRoiSize.height);
+        cv::Rect rect(props.position.x - props.size/2, props.position.y - props.size/2, props.size, props.size);
+        // cv::Rect rect(props.position.x, props.position.y, mRoiSize.width, mRoiSize.height);
         cv::rectangle(mBgSubtractorBuffer, rect, 255, CV_FILLED);
         cnt ++;
     } );
