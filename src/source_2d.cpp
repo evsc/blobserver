@@ -33,6 +33,7 @@ Source_2D::Source_2D()
     mScale = 1.f;
     mRotation = 0.f;
     mScaleValues = 1.f;
+    mCrop = cv::Rect(0, 0, 0, 0);
 
     mCorrectDistortion = false;
     mCorrectFisheye = false;
@@ -116,6 +117,8 @@ void Source_2D::applyCorrections()
                 correctFisheye(buffer);
             if (mScale != 1.f)
                 scale(buffer);
+            if (mCrop.width != 0)
+                crop(buffer);
             if (mRotation != 0.f)
                 rotate(buffer);
             if (mScaleValues != 1.f)
@@ -227,6 +230,22 @@ void Source_2D::setBaseParameter(atom::Message pParam)
     else if (paramName == "rotation")
     {
         readParam(pParam, mRotation);
+    }
+    else if (paramName == "crop")
+    {
+        float pos[4];
+        for (int i = 0; i < 4; ++i)
+            if (!readParam(pParam, pos[i], i + 1))
+                return;
+
+        cv::Rect roi;
+        roi.x = pos[0];
+        roi.y = pos[1];
+        roi.width = pos[2];
+        roi.height = pos[3];
+
+        mCrop = roi;
+
     }
     else if (paramName == "scaleValues")
     {
@@ -520,6 +539,12 @@ void Source_2D::rotate(cv::Mat& pImg)
     pImg = rotatedMat;
 }
 
+/************/
+void Source_2D::crop(cv::Mat& pImg)
+{
+    cv::Mat output = cv::Mat(pImg, mCrop);
+    pImg = output;
+}
 /************/
 void Source_2D::correctVignetting(cv::Mat& pImg)
 {
