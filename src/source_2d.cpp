@@ -117,10 +117,10 @@ void Source_2D::applyCorrections()
                 correctFisheye(buffer);
             if (mScale != 1.f)
                 scale(buffer);
-            if (mCrop.width != 0)
-                crop(buffer);
             if (mRotation != 0.f)
                 rotate(buffer);
+            if (mCrop.width != 0)
+                crop(buffer);
             if (mScaleValues != 1.f)
                 buffer *= mScaleValues;
             if (mHdriActive)
