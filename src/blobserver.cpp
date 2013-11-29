@@ -630,22 +630,22 @@ int App::loop()
                 lSourceNumber = (lSourceNumber+1)%lBuffers.size();
                 g_log(NULL, G_LOG_LEVEL_INFO, "Buffer displayed: %s", lBufferNames[lSourceNumber].c_str());
             }
-            if (lKey == 'd') {
-                for_each (mFlows.begin(), mFlows.end(), [&] (Flow& flow) {
-                    if (flow.actuator->getName() == "Actuator_Hog") {
-                        atom::Message rmsg;
-                        rmsg.push_back(atom::StringValue::create("finalDisplay"));
-                        rmsg = flow.actuator->getParameter(rmsg);
-                        int v = atom::toInt(rmsg[1]);
-                        v++;
-                        v %= 3;
-                        atom::Message msg;
-                        msg.push_back(atom::StringValue::create("finalDisplay"));
-                        msg.push_back(atom::FloatValue::create(v));
-                        flow.actuator->setParameter(msg);
-                    }
-                });
-            }
+            // if (lKey == 'd') {
+            //     for_each (mFlows.begin(), mFlows.end(), [&] (Flow& flow) {
+            //         if (flow.actuator->getName() == "Actuator_Hog") {
+            //             atom::Message rmsg;
+            //             rmsg.push_back(atom::StringValue::create("finalDisplay"));
+            //             rmsg = flow.actuator->getParameter(rmsg);
+            //             int v = atom::toInt(rmsg[1]);
+            //             v++;
+            //             v %= 3;
+            //             atom::Message msg;
+            //             msg.push_back(atom::StringValue::create("finalDisplay"));
+            //             msg.push_back(atom::FloatValue::create(v));
+            //             flow.actuator->setParameter(msg);
+            //         }
+            //     });
+            // }
         }
 
         unsigned long long chronoEnd = chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now().time_since_epoch()).count();

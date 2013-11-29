@@ -142,7 +142,6 @@ void Actuator_Hog::make()
     mBlobMergeDistance = 64.f;
     mSaveSamples = false;
     mSaveSamplesAge = 120;
-    finalDisplay = 0;
 
     movement = 0;
 }
@@ -398,12 +397,12 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     //     cv::Mat in[] = {mBgSubtractorBuffer, mBgSubtractorBuffer, mBgSubtractorBuffer};
     //     cv::merge(in, 3, mBgSubtractorBuffer);
     //     mOutputBuffer = mBgSubtractorBuffer.clone();
-    // } else mOutputBuffer = resultMat.clone();
 
     //mOutputBuffer = resultMat.clone();
     mOutputBuffers.clear();
     mOutputBuffers.push_back(resultMat);
     mOutputBuffers.push_back(mBgSubtractorBuffer);
+    mOutputBuffers.push_back(lEroded);
 
     return mLastMessage;
 }
@@ -597,14 +596,6 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
             mSaveSamples = true;
         else
             mSaveSamples = false;
-    }
-    else if (cmd == "finalDisplay")
-    {
-        float disp;
-        if (!readParam(pMessage, disp))
-            return;
-
-        finalDisplay = int(disp);
     }
     else if (cmd == "saveSamplesAge")
     {

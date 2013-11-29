@@ -55,8 +55,6 @@ atom::Message Actuator::getParameter(atom::Message pParam) const
         message.push_back(atom::StringValue::create(mClassName.c_str()));
     else if (param == "osc path")
         message.push_back(atom::StringValue::create(mOscPath.c_str()));
-    else if (param == "finalDisplay")
-        message.push_back(atom::IntValue::create(finalDisplay));
 
     return message;
 }
