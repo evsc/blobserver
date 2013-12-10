@@ -560,12 +560,6 @@ void Source_2D::crop(cv::Mat& pImg)
 }
 
 /************/
-void Source_2D::crop(cv::Mat& pImg)
-{
-    cv::Mat output = cv::Mat(pImg, mCrop);
-    pImg = output;
-}
-/************/
 void Source_2D::correctVignetting(cv::Mat& pImg)
 {
     if (mRecomputeVignettingMat == true || mVignettingMat.size() != pImg.size())

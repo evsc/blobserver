@@ -301,8 +301,8 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     }
 
 
-    // cv::Mat resultMat = cv::Mat::zeros(input.rows, input.cols, input.type());
-    cv::Mat resultMat = cv::Mat::ones(input.rows, input.cols, input.type());
+    cv::Mat resultMat = cv::Mat::zeros(input.rows, input.cols, input.type());
+    // cv::Mat resultMat = cv::Mat::ones(input.rows, input.cols, input.type());
     for (auto& blob : mBlobs)
     {
         Blob::properties props = blob.getBlob();
