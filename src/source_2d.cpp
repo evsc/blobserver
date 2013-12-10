@@ -251,6 +251,19 @@ void Source_2D::setBaseParameter(atom::Message pParam)
     {
         readParam(pParam, mScaleValues);
     }
+    else if (paramName == "crop")
+    {
+        float pos[4];
+        for (int i = 0; i < 4; ++i)
+            if (!readParam(pParam, pos[i], i + 1))
+                return;
+        cv::Rect roi;
+        roi.x = pos[0];
+        roi.y = pos[1];
+        roi.width = pos[2];
+        roi.height = pos[3];
+        mCrop = roi;
+    }
     else if (paramName == "distortion")
     {
         // Only one param, we correct only the 4th order
@@ -537,6 +550,13 @@ void Source_2D::rotate(cv::Mat& pImg)
     cv::Mat rotatedMat;
     cv::warpAffine(pImg, rotatedMat, rotMat, cv::Size(pImg.cols, pImg.rows), cv::INTER_LINEAR, 0, cv::Scalar(128.0));
     pImg = rotatedMat;
+}
+
+/*************/
+void Source_2D::crop(cv::Mat& pImg)
+{
+    cv::Mat output = cv::Mat(pImg, mCrop);
+    pImg = output;
 }
 
 /************/
