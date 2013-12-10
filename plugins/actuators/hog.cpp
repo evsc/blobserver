@@ -115,6 +115,7 @@ void Actuator_Hog::make()
     mName = mClassName;
     mOscPath = "hog";
 
+    mBgScale = 1.f;
     mFilterSize = 3;
     mFilterDilateCoeff = 3;
 
@@ -145,7 +146,6 @@ void Actuator_Hog::make()
     mSaveSamplesAge = 120;
 
     movement = 0;
-
     mBgScale = 1.f;
     mMaximumVelocity = 0.f;
     mOcclusionDistance = 0.f;
