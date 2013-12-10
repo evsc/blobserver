@@ -145,6 +145,10 @@ void Actuator_Hog::make()
     mSaveSamplesAge = 120;
 
     movement = 0;
+
+    mBgScale = 1.f;
+    mMaximumVelocity = 0.f;
+    mOcclusionDistance = 0.f;
 }
 
 /*************/
@@ -297,7 +301,8 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     }
 
 
-    cv::Mat resultMat = cv::Mat::zeros(input.rows, input.cols, input.type());
+    // cv::Mat resultMat = cv::Mat::zeros(input.rows, input.cols, input.type());
+    cv::Mat resultMat = cv::Mat::ones(input.rows, input.cols, input.type());
     for (auto& blob : mBlobs)
     {
         Blob::properties props = blob.getBlob();
@@ -341,15 +346,12 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
         lLost = (int)mBlobs[i].getLostDuration();
 
         // Print the blob number on the blob
-        if (mVerbose)
-        {
-            char lNbrStr[8];
-            cv::Scalar fontcolor;
-            if (lLost <= 0) fontcolor = cv::Scalar(255.0, 0.0, 0.0, 128.0);
-            else fontcolor = cv::Scalar(128.0, 128.0, 128.0, 128.0);
-            sprintf(lNbrStr, "%i", lId);
-            cv::putText(resultMat, lNbrStr, cv::Point(lX, lY), cv::FONT_HERSHEY_COMPLEX, 0.66, fontcolor);
-        }
+        char lNbrStr[8];
+        cv::Scalar fontcolor;
+        if (lLost <= 0) fontcolor = cv::Scalar(255.0, 0.0, 0.0, 128.0);
+        else fontcolor = cv::Scalar(128.0, 128.0, 128.0, 128.0);
+        sprintf(lNbrStr, "%i", lId);
+        cv::putText(resultMat, lNbrStr, cv::Point(lX, lY), cv::FONT_HERSHEY_COMPLEX, 0.66, fontcolor);
 
         // Add this blob to the message
         mLastMessage.push_back(atom::IntValue::create(lId));

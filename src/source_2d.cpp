@@ -535,7 +535,7 @@ void Source_2D::rotate(cv::Mat& pImg)
     cv::Point2f center = cv::Point2f((float)pImg.cols / 2.f, (float)pImg.rows / 2.f);
     cv::Mat rotMat = cv::getRotationMatrix2D(center, mRotation, 1.0);
     cv::Mat rotatedMat;
-    cv::warpAffine(pImg, rotatedMat, rotMat, cv::Size(pImg.cols, pImg.rows), cv::INTER_LINEAR);
+    cv::warpAffine(pImg, rotatedMat, rotMat, cv::Size(pImg.cols, pImg.rows), cv::INTER_LINEAR, 0, cv::Scalar(128.0));
     pImg = rotatedMat;
 }
 
@@ -835,7 +835,8 @@ bool Source_2D::createHdri(cv::Mat& pImg)
 /*************/
 void Source_2D::saveToFile(cv::Mat& pImg)
 {
-    if (mSavePhase == 0 && enableRecording == true)
+    // if (mSavePhase == 0 && enableRecording == true)
+    if (mSavePhase == 0)
     {
         char buffer[16];
         sprintf(buffer, "%05i", mSaveIndex);
