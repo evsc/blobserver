@@ -96,6 +96,10 @@ void Source_2D::applyCorrections()
 
             bool lResult = true;
             cv::Mat buffer = retrieveRawFrame();
+
+            // SAVE TO FILE BEFORE ALL EDITS (crops,rotations,etc)
+            if (mSaveToFile)
+                saveToFile(buffer);
     
             if (mAutoExposureRoi.width != 0 && mAutoExposureRoi.height != 0)
                 applyAutoExposure(buffer);
@@ -130,8 +134,8 @@ void Source_2D::applyCorrections()
             if (buffer.rows != 0 && buffer.cols != 0 && lResult)
                 mCorrectedBuffer = buffer.clone();
     
-            if (mSaveToFile)
-                saveToFile(buffer);
+            // if (mSaveToFile)
+            //     saveToFile(buffer);
 
             mUpdated = false;
         }
@@ -555,6 +559,8 @@ void Source_2D::rotate(cv::Mat& pImg)
 /*************/
 void Source_2D::crop(cv::Mat& pImg)
 {
+    if (mCrop.width + mCrop.x >= pImg.cols || mCrop.height + mCrop.y >= pImg.rows)
+	return;
     cv::Mat output = cv::Mat(pImg, mCrop);
     pImg = output;
 }
