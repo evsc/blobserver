@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include <glib.h>
@@ -89,7 +90,7 @@ class Source_2D : public Source
         /**
          * \brief Destructor
          */
-        ~Source_2D();
+        virtual ~Source_2D();
 
         /**
          * \return Returns the class name of the source
@@ -186,6 +187,11 @@ class Source_2D : public Source
         static std::string mClassName; //!< Class name, to be set in child class
         static std::string mDocumentation; //!< Class documentation, to be set in child class
 
+        // Thread in which corrections are applied
+        std::shared_ptr<std::thread> mCorrectionThread;
+        std::mutex mCorrectionMutex;
+        bool mIsRunning;
+
         // Mask
         cv::Mat mMask;
         
@@ -196,8 +202,11 @@ class Source_2D : public Source
         float mScale;
         float mRotation;
         float mScaleValues;
+        cv::Rect mCrop;
 
         // Distorsion parameters
+        bool mGammaCorrection; //!< Flag set if gamma correction is activated
+        float mGammaCorrectionValue;
         bool mCorrectDistortion; //!< Flag set if distortion correction is activated
         bool mCorrectFisheye; //!< Flag set if fisheye correction is activated
         bool mCorrectVignetting; //!< Flag set if vignetting correction is activated
@@ -230,6 +239,7 @@ class Source_2D : public Source
 
         // File saving
         bool mSaveToFile;
+        bool enableRecording;
         std::string mBaseFilename;
         int mSavePeriod;
         int mSaveIndex, mSavePhase;
@@ -239,15 +249,22 @@ class Source_2D : public Source
         /************/
         float getEV();
 
+        // Raw frame correction method
+        void applyCorrections();
+
         // Mask
         void applyMask(cv::Mat& pImg);
 
         // Noise correction
         void filterNoise(cv::Mat& pImg);
 
+        // Gamma correction
+        void correctGamma(cv::Mat& pImg);
+
         // Basic geometric corrections
         void scale(cv::Mat& pImg);
         void rotate(cv::Mat& pImg);
+        void crop(cv::Mat& pImg);
 
         // Methods to correct the optical distortion
         void correctVignetting(cv::Mat& pImg);

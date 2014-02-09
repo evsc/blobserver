@@ -36,6 +36,7 @@
 #if HAVE_ARAVIS
 #include "source_2d_gige.h"
 #endif
+#include "source_2d_image.h"
 #include "source_2d_opencv.h"
 #include "source_2d_shmdata.h"
 #include "source_3d_shmdata.h"
@@ -108,7 +109,7 @@ void App::stop()
 }
 
 /*****************/
-void leave (int sig)
+void leave(int sig)
 {
     shared_ptr<App> theApp = App::getInstance();
     theApp->stop();
@@ -192,7 +193,7 @@ int App::init(int argc, char** argv)
     // Configuration file needs to be loaded in a thread
     if (gConfigFile != NULL)
     {
-        Configurator configurator;
+        Configurator configurator(lNetProto);
         configurator.loadXML((char*)gConfigFile);
     }
 
@@ -314,6 +315,8 @@ void App::registerClasses()
     // Register sources
     mSourceFactory.register_class<Source_2D_OpenCV>(Source_2D_OpenCV::getClassName(),
         Source_2D_OpenCV::getDocumentation());
+    mSourceFactory.register_class<Source_2D_Image>(Source_2D_Image::getClassName(),
+        Source_2D_Image::getDocumentation());
 #if HAVE_ARAVIS
     mSourceFactory.register_class<Source_2D_Gige>(Source_2D_Gige::getClassName(),
         Source_2D_Gige::getDocumentation());
@@ -349,7 +352,7 @@ void App::loadPlugins()
         string strFilename = string(filename);
         if (strFilename.substr(strFilename.size() - 3, strFilename.size()) == string(".so"))
         {
-            g_log(NULL, G_LOG_LEVEL_DEBUG, "Found lib %s", strFilename.c_str());
+            //g_log(NULL, G_LOG_LEVEL_DEBUG, "Found lib %s", strFilename.c_str());
 
             string path = prefix + strFilename;
             void* handler;
@@ -478,14 +481,38 @@ int App::loop()
                 atom::Message message;
                 message = flow.actuator->getLastMessage();
 
-                Capture_Ptr output = flow.actuator->getOutput();
-                lBuffers.push_back(output);
+                vector<Capture_Ptr> output = flow.actuator->getOutput();
+                for_each (output.begin(), output.end(), [&] (Capture_Ptr& img)
+                {
+                    lBuffers.push_back(img);
+                    lBufferNames.push_back(flow.actuator->getName());
+                });
+
+                if (flow.actuator->getName() == "Actuator_Hog") {
+                    // check last item on message
+                    int mvmnt = atom::toInt(message[message.size()-1]);
+                    atom::Message msg;
+                    msg.push_back(atom::StringValue::create("enableRecording"));
+                    msg.push_back(atom::FloatValue::create(mvmnt));
+                    Flow* flow = &mFlows[0];
+                    flow->sources[0]->setParameter(msg);
+                    //cout << "Loop() \tActuator_Hog \t" << "enableRecording \t" << mvmnt << endl;
+                }
 
 #if HAVE_SHMDATA
-                flow.sink->setCapture(output);
+                if (flow.sink.size() < output.size())
+                    for (int i = flow.sink.size(); i < output.size(); ++i)
+                    {
+                        char shmFile[128];
+                        sprintf(shmFile, "/tmp/blobserver_%i_%s_%i", flow.id, flow.actuator->getOscPath().c_str(), i);
+                        shared_ptr<Shm> shm;
+                        shm.reset(new ShmAuto(shmFile));
+                        flow.sink.push_back(shm);
+                    }
+                        
+                for (int i = 0; i < output.size(); ++i)
+                    flow.sink[i]->setCapture(output[i]);
 #endif
-
-                lBufferNames.push_back(flow.actuator->getName());
 
                 // Send OSC messages
                 // Beginning of the frame
@@ -577,12 +604,14 @@ int App::loop()
                     float maxValue = 0.f;
                     for (int x = 0; x < displayMat.cols; ++x)
                         for (int y = 0; y < displayMat.rows; ++y)
-                            maxValue = max(maxValue, displayMat.at<cv::Vec3f>(y, x)[0]);
+                            for (int c = 0; c < displayMat.channels(); ++c)
+                                maxValue = max(maxValue, displayMat.at<cv::Vec3f>(y, x)[c]);
+                    g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Maximum value for the HDR tonemapping: %f", __FUNCTION__, maxValue);
             
                     cv::Mat buffer = cv::Mat::zeros(displayMat.size(), CV_8UC3);
                     displayMat /= maxValue;
-                    cv::pow(displayMat, 1.0 / 1.8, displayMat);
-                    displayMat *= 2.0 * 255.f;
+                    cv::pow(displayMat, 1.0 / 2.2, displayMat);
+                    displayMat *= 255.f;
                     displayMat.convertTo(buffer, CV_8UC3);
                     displayMat = buffer;
                 }
@@ -601,6 +630,22 @@ int App::loop()
                 lSourceNumber = (lSourceNumber+1)%lBuffers.size();
                 g_log(NULL, G_LOG_LEVEL_INFO, "Buffer displayed: %s", lBufferNames[lSourceNumber].c_str());
             }
+            // if (lKey == 'd') {
+            //     for_each (mFlows.begin(), mFlows.end(), [&] (Flow& flow) {
+            //         if (flow.actuator->getName() == "Actuator_Hog") {
+            //             atom::Message rmsg;
+            //             rmsg.push_back(atom::StringValue::create("finalDisplay"));
+            //             rmsg = flow.actuator->getParameter(rmsg);
+            //             int v = atom::toInt(rmsg[1]);
+            //             v++;
+            //             v %= 3;
+            //             atom::Message msg;
+            //             msg.push_back(atom::StringValue::create("finalDisplay"));
+            //             msg.push_back(atom::FloatValue::create(v));
+            //             flow.actuator->setParameter(msg);
+            //         }
+            //     });
+            // }
         }
 
         unsigned long long chronoEnd = chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -705,6 +750,8 @@ int App::oscHandlerSignIn(const char* path, const char* types, lo_arg** argv, in
     atom::Message message;
     atom::message_build_from_lo_args(message, types, argv, argc);
 
+    cout << "osc handler signin \t" << message << endl;
+
     if (message.size() < 2)
     {
         g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Wrong number of arguments received.", __FUNCTION__);
@@ -728,7 +775,7 @@ int App::oscHandlerSignIn(const char* path, const char* types, lo_arg** argv, in
     // Check wether this address is already signed in
     if (theApp->mClients.find(addressStr) == theApp->mClients.end())
     {
-        shared_ptr<OscClient> address(new OscClient(lo_address_new(addressStr.c_str(), port)));
+        shared_ptr<OscClient> address(new OscClient(lo_address_new_with_proto(gTcp ? LO_TCP : LO_UDP, addressStr.c_str(), port)));
         int error = lo_address_errno(address->get());
         if (error != 0)
         {
@@ -743,7 +790,7 @@ int App::oscHandlerSignIn(const char* path, const char* types, lo_arg** argv, in
     // If already connected, we send a message to say so
     else
     {
-        shared_ptr<OscClient> address(new OscClient(lo_address_new(addressStr.c_str(), port)));
+        shared_ptr<OscClient> address(new OscClient(lo_address_new_with_proto(gTcp ? LO_TCP : LO_UDP, addressStr.c_str(), port)));
         int error = lo_address_errno(address->get());
         if (error != 0)
         {
@@ -841,7 +888,7 @@ int App::oscHandlerChangePort(const char* path, const char* types, lo_arg** argv
     // Change the port number
     {
         lock_guard<mutex> lock(theApp->mFlowMutex);
-        theApp->mClients[addressStr]->replace(lo_address_new(addressStr.c_str(), port));
+        theApp->mClients[addressStr]->replace(lo_address_new_with_proto(gTcp ? LO_TCP : LO_UDP, addressStr.c_str(), port));
     }
 
     return 0;
@@ -896,7 +943,7 @@ int App::oscHandlerChangeIp(const char* path, const char* types, lo_arg** argv, 
     // Change the port number
     {
         lock_guard<mutex> lock(theApp->mFlowMutex);
-        theApp->mClients[addressStr]->replace(lo_address_new(newAddress.c_str(), port));
+        theApp->mClients[addressStr]->replace(lo_address_new_with_proto(gTcp ? LO_TCP : LO_UDP, newAddress.c_str(), port));
     }
 
     return 0;
@@ -910,7 +957,6 @@ int App::oscHandlerConnect(const char* path, const char* types, lo_arg** argv, i
     // Messge must be : ip / port / actuator / source0 / subsource0 / source1 / ...
     atom::Message message;
     atom::message_build_from_lo_args(message, types, argv, argc);
-
 
     //char port[8];
     string addressStr;
@@ -1041,13 +1087,6 @@ int App::oscHandlerConnect(const char* path, const char* types, lo_arg** argv, i
         flow.id = theApp->getValidId();
         flow.run = false;
 
-        char shmFile[128];
-        sprintf(shmFile, "/tmp/blobserver_output_%i", flow.id);
-
-#if HAVE_SHMDATA
-        flow.sink.reset(new ShmAuto(shmFile));
-#endif
-
         vector<shared_ptr<Source>>::const_iterator source;
         for (source = sources.begin(); source != sources.end(); ++source)
         {
@@ -1158,6 +1197,8 @@ int App::oscHandlerSetParameter(const char* path, const char* types, lo_arg** ar
 
     atom::Message message;
     atom::message_build_from_lo_args(message, types, argv, argc);
+
+    cout << "osc handler setParameter \t" << message << endl;
         
     string addressStr;
     try

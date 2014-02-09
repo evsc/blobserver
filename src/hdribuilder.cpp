@@ -33,6 +33,10 @@ bool HdriBuilder::addLDR(const Mat& pImage, float pEV)
     lLDRi.EV = pEV;
     lLDRi.image = pImage;
 
+    // Check if the size has changed
+    if (mLDRi.size() != 0 && mLDRi[0].image.size() != lLDRi.image.size())
+        mLDRi.clear();
+
     // Check if this is the first image
     if(mLDRi.size() == 0)
     {
@@ -127,9 +131,9 @@ bool HdriBuilder::computeHDRI()
             lHDRPixel[0] = 0.f;
             lHDRPixel[1] = 0.f;
             lHDRPixel[2] = 0.f;
-            lSum[0] = 0.f;
-            lSum[1] = 0.f;
-            lSum[2] = 0.f;
+            lSum[0] = numeric_limits<float>::min();
+            lSum[1] = numeric_limits<float>::min();
+            lSum[2] = numeric_limits<float>::min();
 
             // If the least exposed channel is overexposed on one channel
             // we set the pixel to white

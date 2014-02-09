@@ -27,9 +27,13 @@ Source_2D::Source_2D()
 
     mFilterNoise = false;
 
+    mGammaCorrection = false;
+    mGammaCorrectionValue = 1.f;
+
     mScale = 1.f;
     mRotation = 0.f;
     mScaleValues = 1.f;
+    mCrop = cv::Rect(0, 0, 0, 0);
 
     mCorrectDistortion = false;
     mCorrectFisheye = false;
@@ -53,8 +57,12 @@ Source_2D::Source_2D()
     mHdriActive = false;
 
     mSaveToFile = false;
+    enableRecording = false;
     mSaveIndex = 0;
     mSavePhase = 0;
+
+    mIsRunning = true;
+    mCorrectionThread.reset(new thread(&Source_2D::applyCorrections, this));
 }
 
 /************/
@@ -66,53 +74,81 @@ Source_2D::Source_2D(int pParam)
 /************/
 Source_2D::~Source_2D()
 {
+    mIsRunning = false;
+    mCorrectionThread->join();
+
     if (mICCTransform != NULL)
         cmsDeleteTransform(mICCTransform);
 }
 
 /************/
+void Source_2D::applyCorrections()
+{
+    timespec nap;
+    nap.tv_sec = 0;
+    nap.tv_nsec = 1e5;
+
+    while (mIsRunning)
+    {
+        if (mUpdated)
+        {
+            lock_guard<mutex> lock(mCorrectionMutex);
+
+            bool lResult = true;
+            cv::Mat buffer = retrieveRawFrame();
+
+            // SAVE TO FILE BEFORE ALL EDITS (crops,rotations,etc)
+            if (mSaveToFile)
+                saveToFile(buffer);
+    
+            if (mAutoExposureRoi.width != 0 && mAutoExposureRoi.height != 0)
+                applyAutoExposure(buffer);
+            if (mMask.total() != 0)
+                applyMask(buffer);
+            // Noise filtering and vignetting correction, as well as ICC transform and lense
+            // distortion correction have to be done before any geometric transformation
+            if (mFilterNoise)
+                filterNoise(buffer);
+            if (mCorrectVignetting)
+                correctVignetting(buffer);
+            if (mICCTransform != NULL)
+                cmsDoTransform(mICCTransform, buffer.data, buffer.data, buffer.total());
+            if (mGammaCorrection)
+                correctGamma(buffer);
+            if (mCorrectDistortion)
+                correctDistortion(buffer);
+            if (mCorrectFisheye)
+                correctFisheye(buffer);
+            if (mScale != 1.f)
+                scale(buffer);
+            if (mRotation != 0.f)
+                rotate(buffer);
+            if (mCrop.width != 0)
+                crop(buffer);
+            if (mScaleValues != 1.f)
+                buffer *= mScaleValues;
+            if (mHdriActive)
+                lResult &= createHdri(buffer);
+    
+            // Some modifiers will not output a valid image every frame
+            if (buffer.rows != 0 && buffer.cols != 0 && lResult)
+                mCorrectedBuffer = buffer.clone();
+    
+            // if (mSaveToFile)
+            //     saveToFile(buffer);
+
+            mUpdated = false;
+        }
+
+        nanosleep(&nap, NULL);
+    }
+}
+
+/************/
 Capture_Ptr Source_2D::retrieveFrame()
 {
-    if (mUpdated)
-    {
-        bool lResult = true;
-        cv::Mat buffer = retrieveRawFrame();
-
-        if (mAutoExposureRoi.width != 0 && mAutoExposureRoi.height != 0)
-            applyAutoExposure(buffer);
-        if (mMask.total() != 0)
-            applyMask(buffer);
-        // Noise filtering and vignetting correction, as well as ICC transform and lense
-        // distortion correction have to be done before any geometric transformation
-        if (mFilterNoise)
-            filterNoise(buffer);
-        if (mCorrectVignetting)
-            correctVignetting(buffer);
-        if (mICCTransform != NULL)
-            cmsDoTransform(mICCTransform, buffer.data, buffer.data, buffer.total());
-        if (mCorrectDistortion)
-            correctDistortion(buffer);
-        if (mCorrectFisheye)
-            correctFisheye(buffer);
-        if (mScale != 1.f)
-            scale(buffer);
-        if (mRotation != 0.f)
-            rotate(buffer);
-        if (mScaleValues != 1.f)
-            buffer *= mScaleValues;
-        if (mHdriActive)
-            lResult &= createHdri(buffer);
-
-        // Some modifiers will not output a valid image every frame
-        if (buffer.rows != 0 && buffer.cols != 0 && lResult)
-            mCorrectedBuffer = buffer.clone();
-
-        if (mSaveToFile)
-            saveToFile(buffer);
-
-        mUpdated = false;
-    }
-
+    lock_guard<mutex> lock(mCorrectionMutex);
+    
     Capture_2D_Mat_Ptr capture(new Capture_2D_Mat(mCorrectedBuffer));
     return capture;
 }
@@ -121,6 +157,7 @@ Capture_Ptr Source_2D::retrieveFrame()
 void Source_2D::setBaseParameter(atom::Message pParam)
 {
     std::string paramName;
+
     try
     {
         paramName = atom::toString(pParam[0]);
@@ -179,6 +216,15 @@ void Source_2D::setBaseParameter(atom::Message pParam)
                 mFilterNoise = false;
         }
     }
+    else if (paramName == "gammaCorrection")
+    {
+        float g;
+        if (readParam(pParam, g))
+        {
+            mGammaCorrectionValue = g;
+            mGammaCorrection = true;
+        }
+    }
     else if (paramName == "scale")
     {
         float scale;
@@ -189,9 +235,38 @@ void Source_2D::setBaseParameter(atom::Message pParam)
     {
         readParam(pParam, mRotation);
     }
+    else if (paramName == "crop")
+    {
+        float pos[4];
+        for (int i = 0; i < 4; ++i)
+            if (!readParam(pParam, pos[i], i + 1))
+                return;
+
+        cv::Rect roi;
+        roi.x = pos[0];
+        roi.y = pos[1];
+        roi.width = pos[2];
+        roi.height = pos[3];
+
+        mCrop = roi;
+
+    }
     else if (paramName == "scaleValues")
     {
         readParam(pParam, mScaleValues);
+    }
+    else if (paramName == "crop")
+    {
+        float pos[4];
+        for (int i = 0; i < 4; ++i)
+            if (!readParam(pParam, pos[i], i + 1))
+                return;
+        cv::Rect roi;
+        roi.x = pos[0];
+        roi.y = pos[1];
+        roi.width = pos[2];
+        roi.height = pos[3];
+        mCrop = roi;
     }
     else if (paramName == "distortion")
     {
@@ -382,6 +457,24 @@ void Source_2D::setBaseParameter(atom::Message pParam)
             mSaveToFile = false;
         }
     }
+    else if (paramName == "enableRecording")
+    {
+        float enable;
+
+        if (!readParam(pParam, enable, 1))
+            return;
+
+        if (enable > 0) {
+            enableRecording = true;
+            // cout << "setBaseParameter :: enableRecording :: true" << endl;
+        } 
+        else 
+        {
+            enableRecording = false;
+            // cout << "setBaseParameter :: enableRecording :: false" << endl;
+        }
+        
+    }
 }
 
 /************/
@@ -425,14 +518,16 @@ void Source_2D::applyMask(cv::Mat& pImg)
         cv::resize(mMask, buffer, cv::Size(pImg.cols, pImg.rows), 0, 0, cv::INTER_NEAREST);
         mMask = buffer;
     }
-    if (mMask.depth() != pImg.type())
+    if (mMask.type() != pImg.type())
     {
         cv::Mat buffer = cv::Mat::zeros(mMask.rows, mMask.cols, pImg.type());
-        mMask.convertTo(buffer, pImg.type());
+        // buffer(cv::Rect(0,0,mMask.rows/2, mMask.cols/2)) = cv::Scalar::all(1);
+        // mMask.convertTo(buffer, pImg.type());
+        cv::Mat in[] = {mMask, mMask, mMask};
+        cv::merge(in, 3, buffer);
         mMask = buffer;
         mMask /= 255;
     }
-
     cv::multiply(mMask, pImg, pImg);
 }
 
@@ -457,8 +552,17 @@ void Source_2D::rotate(cv::Mat& pImg)
     cv::Point2f center = cv::Point2f((float)pImg.cols / 2.f, (float)pImg.rows / 2.f);
     cv::Mat rotMat = cv::getRotationMatrix2D(center, mRotation, 1.0);
     cv::Mat rotatedMat;
-    cv::warpAffine(pImg, rotatedMat, rotMat, cv::Size(pImg.cols, pImg.rows), cv::INTER_LINEAR);
+    cv::warpAffine(pImg, rotatedMat, rotMat, cv::Size(pImg.cols, pImg.rows), cv::INTER_LINEAR, 0, cv::Scalar(128.0));
     pImg = rotatedMat;
+}
+
+/*************/
+void Source_2D::crop(cv::Mat& pImg)
+{
+    if (mCrop.width + mCrop.x >= pImg.cols || mCrop.height + mCrop.y >= pImg.rows)
+	return;
+    cv::Mat output = cv::Mat(pImg, mCrop);
+    pImg = output;
 }
 
 /************/
@@ -495,6 +599,23 @@ void Source_2D::correctVignetting(cv::Mat& pImg)
     }
 
     cv::multiply(pImg, mVignettingMat, pImg, 1.0, pImg.type());
+}
+
+/************/
+void Source_2D::correctGamma(cv::Mat& pImg)
+{
+    int depth = pImg.depth();
+    cv::Mat buffer;
+    pImg.convertTo(buffer, CV_32F);
+    if (depth == CV_8U)
+    {
+        cv::pow(buffer / 255.f, mGammaCorrectionValue, buffer);
+        buffer *= 255.f;
+    }
+    else
+        cv::pow(buffer, mGammaCorrectionValue, buffer);
+        
+    buffer.convertTo(pImg, depth);
 }
 
 /************/
@@ -711,7 +832,7 @@ bool Source_2D::createHdri(cv::Mat& pImg)
     if (ldriCount < mHdriSteps)
     {
         message.push_back(atom::FloatValue::create(mExposureTime*pow(2.0, mHdriStepSize)));
-        pImg.create(480, 640, CV_32FC3);
+        pImg.create(pImg.size(), CV_32FC3);
     }
     else
     {
@@ -734,6 +855,7 @@ bool Source_2D::createHdri(cv::Mat& pImg)
 /*************/
 void Source_2D::saveToFile(cv::Mat& pImg)
 {
+    // if (mSavePhase == 0 && enableRecording == true)
     if (mSavePhase == 0)
     {
         char buffer[16];

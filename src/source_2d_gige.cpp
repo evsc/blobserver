@@ -31,6 +31,9 @@ void Source_2D_Gige::make(string pParam)
     mInvertRGB = false;
 
     mConvertedFrame = cv::Mat::zeros(480, 640, CV_8UC3);
+
+    mCamera = NULL;
+    mStream = NULL;
 }
 
 /*************/
@@ -302,7 +305,7 @@ void Source_2D_Gige::setParameter(atom::Message pParam)
         arv_camera_get_exposure_time_bounds(mCamera, &min, &max);
         if (value*1e6 < min || value*1e6 > max)
         {
-            g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Exposure value out of bounds: [%f, %f]", mClassName.c_str(), min / 1e6, max / 1e6);
+            // g_log(NULL, G_LOG_LEVEL_WARNING, "%s - Exposure value out of bounds: [%f, %f]", mClassName.c_str(), min / 1e6, max / 1e6);
             return;
         }
 
@@ -412,7 +415,7 @@ atom::Message Source_2D_Gige::getSubsources() const
 /*************/
 void Source_2D_Gige::streamCb(void* user_data, ArvStreamCallbackType type, ArvBuffer* buffer)
 {
-    Source_2D_Gige* source = (Source_2D_Gige*)user_data;
+    Source_2D_Gige* source = static_cast<Source_2D_Gige*>(user_data);
 
     if (buffer != NULL)
     {

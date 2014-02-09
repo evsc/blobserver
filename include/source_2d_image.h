@@ -1,10 +1,9 @@
 /*
- * Copyright (C) 2012 Emmanuel Durand
+ * Copyright (C) 2013 Emmanuel Durand
  *
  * This file is part of blobserver.
  *
  * This program is free software: you can redistribute it and/or modify
- *
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
@@ -19,43 +18,42 @@
  */
 
 /*
- * @nop.h
- * The Actuator_Nop class.
+ * @source_2d_image.h
+ * The Source_2D_Image class.
  */
 
-#ifndef NOP_H
-#define NOP_H
+#ifndef SOURCE_2D_IMAGE_H
+#define SOURCE_2D_IMAGE_H
 
-#include "actuator.h"
+#include "source_2d.h"
 
- /*************/
-// Class Actuator_Nop
-class Actuator_Nop : public Actuator
+class Source_2D_Image : public Source_2D
 {
     public:
-        Actuator_Nop();
-        Actuator_Nop(int pParam);
+        Source_2D_Image();
+        Source_2D_Image(std::string pParam);
+        ~Source_2D_Image();
 
         static std::string getClassName() {return mClassName;}
         static std::string getDocumentation() {return mDocumentation;}
 
-        atom::Message detect(std::vector< Capture_Ptr > pCaptures);
-        void setParameter(atom::Message pMessage);
+        atom::Message getSubsources() const; 
 
-        std::vector<Capture_Ptr> getOutput() const;
+        bool connect();
+        bool disconnect();
+        bool grabFrame();
+        cv::Mat retrieveRawFrame();
+
+        void setParameter(atom::Message pParam);
+        atom::Message getParameter(atom::Message pParam) const;
 
     private:
         static std::string mClassName;
         static std::string mDocumentation;
 
-        static unsigned int mSourceNbr;
-        unsigned int mFrameNumber;
+        cv::Mat mImage;
 
-        Capture_Ptr mCapture;
-
-        void make();
+        void make(std::string pParam);
 };
 
-REGISTER_ACTUATOR(Actuator_Nop)
-
-#endif // NOP_H
+#endif // SOURCE_2D_IMAGE_H

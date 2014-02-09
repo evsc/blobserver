@@ -1,22 +1,18 @@
 <Blobserver>
     <Flow>
         <Actuator>
-            <Type>Actuator_MirrorBall</Type>
+            <Type>Actuator_GLSL</Type>
             <Param>
-                <Name>sphereDiameter</Name>
-                <Value>30</Value>
+                <Name>vertexFile</Name>
+                <Value>shaders/glsl.vert</Value>
             </Param>
             <Param>
-                <Name>sphere</Name>
-                <Value>616 460 450</Value>
+                <Name>fragmentFile</Name>
+                <Value>shaders/glsl.frag</Value>
             </Param>
             <Param>
-                <Name>fov</Name>
-                <Value>22</Value>
-            </Param>
-            <Param>
-                <Name>threshold</Name>
-                <Value>4</Value>
+                <Name>glSize</Name>
+                <Value>1024 768</Value>
             </Param>
         </Actuator>
         <Source>
@@ -28,15 +24,15 @@
             </Param>
             <Param>
                 <Name>iso</Name>
-                <Value>800</Value>
+                <Value>400</Value>
             </Param>
             <Param>
                 <Name>width</Name>
-                <Value>1280</Value>
+                <Value>640</Value>
             </Param>
             <Param>
                 <Name>height</Name>
-                <Value>960</Value>
+                <Value>480</Value>
             </Param>
         </Source>
         <Client>

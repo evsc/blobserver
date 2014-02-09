@@ -46,8 +46,10 @@
  * - autoExposure (int[7]): parameters for auto exposure, measured in a specified area. Parameters are: [x] [y] [width] [height] [target] [margin] [updateStep%].
  * - exposureLUT (float[2 + i*2]): specify a LUT for the exposure. Parameters are: [number of keys] [interpolation type] [[in key] [out key]]. Interpolation should currently be set to 0
  * - gainLUT (float[2 + i*2]): specify a LUT for the gain. Parameters are: [number of keys] [interpolation type] [[in key] [out key]]. Interpolation should currently be set to 0
+ * - gammaCorrection (float): do a gamma correction onto the image. If the image is 8bits, values are divided by 255.
  * - scale (float, default 1.0): apply scaling on the image
  * - rotation (float): apply rotation on the image, in degrees
+ * - scaleValue (float): multiply all channels by this coefficient
  * - noiseFiltering (int, default 0): set to 1 to activate noise filtering
  * - distortion (int[3]): distortion correction (see http://wiki.panotools.org/Lens_correction_model). Parameters are: [a] [b] [c]
  * - fisheye (float[2]): fisheye correction (see http://wiki.panotools.org/Fisheye_Projection). Parameters are, in pixels: [fisheyeFocal] [rectilinearFocal] 
@@ -87,6 +89,13 @@
  * - framerate (float): framerate of the capture
  * - exposureTime (float): time of the exposure, in us
  * - gain (float): gain applied to the sensor, in dB
+ *
+ * \subsection source_2d_image_sec Image 2D sources (Source_2D_Image)
+ * 
+ * A source which loads a single image specified by its URL. Useful for masks.
+ *
+ * Available parameters:
+ * - url (string): URL to the file to load
  *
  * \subsection source_2d_shmdata_sec shmdata 2D sources (Source_2D_Shmdata)
  * 
@@ -190,6 +199,23 @@
  * - name: fiducialtracker
  * - values: Id(int) X(float) Y(float) angle(float)
  *
+ * \subsection actuator_glsl OpenGL (GLSL) based actuator (Actuator_GLSL)
+ *
+ * Uses the GPU to modify the input image(s) according to some shaders.
+ *
+ * Number of source(s) needed: at least 1 Source_2D (only limited by the GPU)
+ *
+ * Available parameters:
+ * - vertexFile (string): path to the vertex shader
+ * - geometryFile (string): path to the geometry shader
+ * - fragmentFile (string): path to the fragment shader
+ * - glSize (float[2]): size of the rendering buffer. Parameters are: [width] [height]
+ * - uniform (float[n] string): send the specified floats as a uniform to the shaders. (1 <= n <= 4) 
+ * - outputNbr (int, default 1): specifies the number of outputs for the rendering (ie, the number of layout available in GLSL)
+ * - visible (int, default 0): if set to 1, the OpenGL window will be visible in a view independent from the main blobserver window
+ *
+ * OSC output: none
+ *
  * \subsection actuator_hog_sec Histogram of Oriented Gradients (Actuator_Hog)
  *
  * This actuator searches for objects corresponding to the model trained with blobtrainer.
@@ -201,10 +227,15 @@
  * - maxTimePerFrame (int, default 1e5): maximum time (in us) to allow for detection at each frame
  * - maxThreads (int, default 4): maximum number of threads to use
  * - mergeDistance (int, default 64): distance below which detected blobs are merged
+ * - maxTrackDistance (float, default 0): distance below which a new detection can be linked to an existing blob. 0 means no limit.
+ * - occlusionDistance (float, default 0): distance below two blobs are considered to be overlapping. This increases there lifetime.
+ * - bgScale (float, default 1.0): scaling applied to the input image for the background subtraction pass
  * - filterSize (int, default 3): size of the morphological filter used to filter noise in the background subtraction pass
  * - roiSize (int[2], default 64 128): size (in pixels) of the detection window
  * - blockSize (int[2], default 2 2): size (in cells) where normalization is applied
  * - cellSize (int[2], default 16 16): size (in pixels) of a histogram of oriented gradients cell
+ * - cellMaxSize (int[2], default 0 0): maximum size (in pixels) of a HoG cell, this activates multiscale analysis
+ * - cellStep (float[2], default 2 2): factor in both directions to go from cellSize to cellMaxSize, in a multiscale context
  * - bins (int, default 9): number of orientations to consider
  * - margin (float, default 0.0): margin to the hyperplane to add to the detection (higher = less false positives and less hit rate)
  * - lifetime (int, default 30): time (in frames) during which a blob is kept even if not detected

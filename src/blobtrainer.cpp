@@ -54,17 +54,23 @@ static double gCPenalty = 0.1;
 static int gBins = 9;
 static gchar* gPosition = NULL;
 static gchar* gCellSize = NULL;
+static gchar* gCellMaxSize = NULL;
+static gchar* gCellStep = NULL;
 static gchar* gBlockSize = NULL;
 static gchar* gRoiSize = NULL;
 static double gSigma = 0.0;
 static double gMargin = 0.0;
+static int gNegativeSubdivide = 5;
 
 static double gPca = 1.0;
 static double gCrossValidation = 1.0;
 
+
 int _svmCriteria;
 cv::Point_<int> _roiPosition;
 cv::Point_<int> _cellSize;
+cv::Point_<int> _cellMaxSize;
+cv::Point_<float> _cellStep;
 cv::Point_<int> _blockSize;
 cv::Point_<int> _roiSize;
 
@@ -84,10 +90,13 @@ static GOptionEntry gEntries[] =
     {"bins", 'b', 0, G_OPTION_ARG_INT, &gBins, "Specifies number of bins for the HOG descriptor (default: 9)", NULL},
     {"position", 0, 0, G_OPTION_ARG_STRING, &gPosition, "Specifies the position where to create the positives descriptors (default: '16x16')", NULL},
     {"cell-size", 0, 0, G_OPTION_ARG_STRING, &gCellSize, "Specifies the size of the cells (in pixels) of descriptors (default: '8x8')", NULL},
+    {"cell-max-size", 0, 0, G_OPTION_ARG_STRING, &gCellMaxSize, "Specifies the maximum size of the cells, when using multiscale training (default: 0x0)", NULL},
+    {"cell-step", 0, 0, G_OPTION_ARG_STRING, &gCellStep, "Specifies the step factor between cell size, when using multiscale training (default: '2x2'", NULL},
     {"block-size", 0, 0, G_OPTION_ARG_STRING, &gBlockSize, "Specifies the size of the blocks over which cells are normalized (default: '3x3')", NULL},
     {"roi-size", 0, 0, G_OPTION_ARG_STRING, &gRoiSize, "Specifies the size (in pixels) of the ROI from which to create descriptors (default: '64x128')", NULL},
     {"sigma", 0, 0, G_OPTION_ARG_DOUBLE, &gSigma, "Specifies the sigma parameter for the gaussian kernel applied over blocks (default: 1.0)", NULL},
     {"margin", 0, 0, G_OPTION_ARG_DOUBLE, &gMargin, "Specifies the distance to the margin for positive images to be detected as such (default: 0.0)", NULL},
+    {"subdivide", 's', 0, G_OPTION_ARG_INT, &gNegativeSubdivide, "Specifies how many times negative images are subdivided in each direction (default: 5)", NULL},
     {"pca", 0, 0, G_OPTION_ARG_DOUBLE, &gPca, "Enables PCA and specifies the ratio of components to keep (default: 1.0)", NULL},
     {"crossValidation", 'C', 0, G_OPTION_ARG_DOUBLE, &gCrossValidation, "Enables cross validation if value is lower than 1.0 (default: 1.0)", NULL},
     {NULL}
@@ -138,6 +147,14 @@ int parseArgs(int argc, char** argv)
     if (gCellSize == NULL)
         gCellSize = (gchar*)"8x8";
     sscanf(gCellSize, "%ix%i", &(_cellSize.x), &(_cellSize.y));
+
+    if (gCellMaxSize == NULL)
+        gCellMaxSize = (gchar*)"0x0";
+    sscanf(gCellMaxSize, "%ix%i", &(_cellMaxSize.x), &(_cellMaxSize.y));
+
+    if (gCellStep == NULL)
+        gCellStep = (gchar*)"2x2";
+    sscanf(gCellStep, "%fx%f", &(_cellStep.x), &(_cellStep.y));
 
     if (gBlockSize == NULL)
         gBlockSize = (gchar*)"3x3";
@@ -196,6 +213,8 @@ void trainSVM(vector<string>& pPositiveFiles, vector<string>& pNegativeFiles, De
         cout << "   output file = " << gOutput << endl;
         cout << "   ROI position = " << gPosition << endl;
         cout << "   cell size = " << gCellSize << endl;
+        cout << "   cell max size = " << _cellMaxSize.x << "x" << _cellMaxSize.y << endl;
+        cout << "   cell step = " << gCellStep << endl;
         cout << "   block size = " << gBlockSize << endl;
         cout << "   roi size = " << gRoiSize << endl;
         cout << "   bins per cell = " << gBins << endl;
@@ -239,9 +258,9 @@ void trainSVM(vector<string>& pPositiveFiles, vector<string>& pNegativeFiles, De
 
         cv::Mat image = cv::imread(pNegativeFiles[i]);
         pDescriptor.setImage(image);
-        for (int x = 0; x < image.cols - _roiSize.x; x += image.cols/5)
+        for (int x = 0; x <= image.cols - _roiSize.x; x += image.cols/gNegativeSubdivide)
         {
-            for (int y = 0; y < image.rows - _roiSize.y; y += image.rows/5)
+            for (int y = 0; y <= image.rows - _roiSize.y; y += image.rows/gNegativeSubdivide)
             {
                 vector<float> description = pDescriptor.getDescriptor(_roiPosition + cv::Point_<int>(x, y));
                 if (description.size() == 0)
@@ -374,9 +393,9 @@ void testSVM(vector<string>& pPositiveFiles, vector<string>& pNegativeFiles, Des
         chronoTime = chrono::duration_cast<chrono::microseconds>(chronoStart.time_since_epoch()).count();
         pDescriptor.setImage(image);
 
-        for (int x = 0; x < image.cols - _roiSize.x; x += image.cols/5)
+        for (int x = 0; x <= image.cols - _roiSize.x; x += image.cols/gNegativeSubdivide)
         {
-            for (int y = 0; y < image.rows - _roiSize.y; y += image.rows/5)
+            for (int y = 0; y <= image.rows - _roiSize.y; y += image.rows/gNegativeSubdivide)
             {
                 vector<float> description = pDescriptor.getDescriptor(_roiPosition + cv::Point_<int>(x, y));
                 cv::Mat descriptionMat(1, (int)description.size(), CV_32FC1, &description[0]);
@@ -401,10 +420,14 @@ void testSVM(vector<string>& pPositiveFiles, vector<string>& pNegativeFiles, Des
         totalTime += timeSince(chronoTime);
     }
 
+    float precision = (float)positive / ((float)positive + (float)totalNegatives - (float)negative);
+    float recall = (float)positive/ ((float)pPositiveFiles.size() - (float)portionOfPositiveFiles);
+
     if (!gTable)
     {
         cout << "Positive: " << positive << " / " << pPositiveFiles.size() - portionOfPositiveFiles << endl;
         cout << "Negative: " << negative << " / " << totalNegatives << endl;
+        cout << "Precision: " << precision << " -- Recall: " << recall << endl;
         cout << "Time per prediction (us): " << totalTime / (pPositiveFiles.size() - portionOfPositiveFiles + totalNegatives) << endl;
     }
     else
@@ -415,20 +438,22 @@ void testSVM(vector<string>& pPositiveFiles, vector<string>& pNegativeFiles, Des
         cout << gOutput << " ";
         cout << gPosition << " ";
         cout << gCellSize << " ";
+        cout << gCellMaxSize << " ";
+        cout << gCellStep << " ";
         cout << gBlockSize << " ";
         cout << gRoiSize << " ";
         cout << gBins << " ";
         cout << gSigma << " ";
         cout << gPca << " ";
         cout << totalTime / (pPositiveFiles.size() - portionOfPositiveFiles + totalNegatives) << " ";
-        cout << (float)positive / ((float)pPositiveFiles.size() - (float)portionOfPositiveFiles) << " " << (float)negative/(float)totalNegatives << endl;
+        cout << precision << " " << recall << endl;
     }
 }
 
 /*************/
 void randomize(vector<string>& pFiles)
 {
-    srand(time(0));
+    srand(pFiles.size());
     for (unsigned int i = 0; i < pFiles.size(); ++i)
     {
         int index = rand() % pFiles.size();
@@ -448,6 +473,12 @@ int main(int argc, char** argv)
     // Set up the descriptor
     Descriptor_Hog descriptor;
     descriptor.setHogParams(_roiSize, _blockSize, _cellSize, gBins, false, Descriptor_Hog::L2_NORM, gSigma);
+    if (_cellMaxSize.x >= _cellSize.x && _cellMaxSize.y >= _cellSize.y && _cellStep.x >= 1.f && _cellStep.y >= 1.f)
+    {
+        if (!gTable)
+            cout << "Multiscale training activated" << endl;
+        descriptor.setMultiscaleParams(_cellSize, _cellMaxSize, _cellStep);
+    }
 
     // The PCA object
     cv::PCA pca;
@@ -464,13 +495,9 @@ int main(int argc, char** argv)
 
     // If no model file is specified for testing, we have to create one
     if (gTestFile == NULL)
-    {
         trainSVM(positiveFiles, negativeFiles, descriptor, svm, pca, gCrossValidation);
-    }
     else
-    {
         svm.load((const char*)gTestFile);
-    }
 
     testSVM(positiveFiles, negativeFiles, descriptor, svm, pca, gCrossValidation);
 

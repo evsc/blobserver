@@ -1,5 +1,6 @@
 #include "hog.h"
 
+#include <cmath>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -61,11 +62,11 @@ class Parallel_Detect : public cv::ParallelLoopBody
                     float distance;
                     try
                     {
-                        g_log(NULL, G_LOG_LEVEL_ERROR, "%s - An exception happened during a call to CvSVM::predict. Is the model file correct?", Actuator_Hog::getClassName().c_str());
+                        distance = _svm->predict(descriptionMat, false);
                     }
                     catch (cv::Exception)
                     {
-                        g_log(NULL, G_LOG_LEVEL_WARNING, "error!");
+                        g_log(NULL, G_LOG_LEVEL_ERROR, "%s - An exception happened during a call to CvSVM::predict. Is the model file correct?", Actuator_Hog::getClassName().c_str());
                     }
                     if (distance == 1.f)
                     {
@@ -114,6 +115,7 @@ void Actuator_Hog::make()
     mName = mClassName;
     mOscPath = "hog";
 
+    mBgScale = 1.f;
     mFilterSize = 3;
     mFilterDilateCoeff = 3;
 
@@ -123,9 +125,11 @@ void Actuator_Hog::make()
     mProcessNoiseCov = 1e-6;
     mMeasurementNoiseCov = 1e-4;
 
-    mRoiSize = cv::Point_<int>(64, 128);
-    mBlockSize = cv::Point_<int>(2, 2);
-    mCellSize = cv::Point_<int>(16, 16);
+    mRoiSize = cv::Size_<int>(64, 128);
+    mBlockSize = cv::Size_<int>(2, 2);
+    mCellSize = cv::Size_<int>(16, 16);
+    mCellMaxSize = cv::Size_<int>(0, 0);
+    mCellStep = cv::Size_<float>(2.f, 2.f);
     mBins = 9;
     mSigma = 0.f;
     updateDescriptorParams();
@@ -140,6 +144,11 @@ void Actuator_Hog::make()
     mBlobMergeDistance = 64.f;
     mSaveSamples = false;
     mSaveSamplesAge = 120;
+
+    movement = 0;
+    mBgScale = 1.f;
+    mMaximumVelocity = 0.f;
+    mOcclusionDistance = 0.f;
 }
 
 /*************/
@@ -152,42 +161,62 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
         return mLastMessage;
     }
 
-    unsigned long long timeStart = duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count();
+    mTimeStart = duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count();
 
     if (captures.size() == 0 || !mIsModelLoaded)
         return mLastMessage;
 
     // For simplicity...
-    cv::Mat input = captures[0];
+    cv::Mat input = captures[0].clone();
 
     // We get windows of interest, using BG subtraction
     // and previous blobs positions
-    mBgSubtractor(input, mBgSubtractorBuffer);
-    // Erode and dilate to suppress noise
-    cv::Mat lEroded;
-    cv::erode(mBgSubtractorBuffer, lEroded, cv::Mat(), cv::Point(-1, -1), mFilterSize);
-    cv::dilate(lEroded, mBgSubtractorBuffer, cv::Mat(), cv::Point(-1, -1), mFilterSize * mFilterDilateCoeff);
-    cv::threshold(mBgSubtractorBuffer, mBgSubtractorBuffer, 250, 255, cv::THRESH_BINARY);
-
-    // The result is translated so that the window will be correctly place for the given pixel
+    if (mBgScale != 1.f)
     {
-        cv::Mat transMat = cv::Mat::zeros(2, 3, CV_32F);
-        transMat.at<float>(0, 0) = 1.f;
-        transMat.at<float>(1, 1) = 1.f;
-        transMat.at<float>(0, 2) = -(float)mRoiSize.width * 0.33f;
-        transMat.at<float>(1, 2) = -(float)mRoiSize.height * 0.33f;
-        cv::Mat translatedMat;
-        cv::warpAffine(mBgSubtractorBuffer, translatedMat, transMat, cv::Size(mBgSubtractorBuffer.cols, mBgSubtractorBuffer.rows), cv::INTER_LINEAR);
-        mBgSubtractorBuffer = translatedMat;
+        cv::Mat bgInput, bgBuffer;
+        cv::Size bgSize(input.cols * mBgScale, input.rows * mBgScale);
+        cv::resize(input, bgInput, bgSize, 0, 0, cv::INTER_LINEAR);
+        mBgSubtractor(bgInput, bgBuffer);
+        cv::resize(bgBuffer, mBgSubtractorBuffer, cv::Size(input.cols, input.rows), 0, 0, cv::INTER_NEAREST);
     }
+    else
+        mBgSubtractor(input, mBgSubtractorBuffer);
+    // Erode and dilate to suppress noise
+    // cv::Mat lEroded;
+    cv::threshold(mBgSubtractorBuffer, mBgSubtractorBuffer, 250, 255, cv::THRESH_BINARY);
+    cv::erode(mBgSubtractorBuffer, lEroded, cv::Mat(), cv::Point(-1, -1), mFilterSize);
+
+    mBgSubtractorBuffer = cv::Mat::zeros(mBgSubtractorBuffer.size(), CV_8U);
+    movement = 0;
+    int cnt = 0;
+    for (uint x = 0; x < lEroded.cols; ++x)
+        for (uint y = 0; y < lEroded.rows; ++y)
+        {
+            if (lEroded.at<uchar>(y, x) > 0)
+            {
+                cv::Rect rect(x - mRoiSize.width / 2, y - mRoiSize.height / 2, mRoiSize.width, mRoiSize.height);
+                cv::rectangle(mBgSubtractorBuffer, rect, 255, CV_FILLED);
+                movement = 1;
+                cnt ++;
+                cv::rectangle(lEroded, rect, 0, CV_FILLED);
+            }
+        }
+    // cout << "eroded detection count = \t" << cnt << endl;
 
     // We draw rectangles to handle previously detected blobs
-    for_each (mBlobs.begin(), mBlobs.end(), [&] (Blob2D blob)
+    // except for the inner part which we will handle in priority
+    cv::Mat priorityMat = cv::Mat::zeros(mBgSubtractorBuffer.size(), CV_8U);
+    for (auto& blob : mBlobs)
     {
         Blob::properties props = blob.getBlob();
         cv::Rect rect(props.position.x - props.size/2, props.position.y - props.size/2, props.size, props.size);
+        // cv::Rect rect(props.position.x, props.position.y, mRoiSize.width, mRoiSize.height);
         cv::rectangle(mBgSubtractorBuffer, rect, 255, CV_FILLED);
-    } );
+        cnt ++;
+        rect = cv::Rect(props.position.x - props.size/4, props.position.y - props.size/4, props.size/2, props.size/2);
+        cv::rectangle(mBgSubtractorBuffer, rect, 0, CV_FILLED);
+        cv::rectangle(priorityMat, rect, 255, CV_FILLED);
+    }
 
     // The result is resized according to cell size
     cv::Size outputSize;
@@ -196,6 +225,10 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     cv::Mat resizedBuffer;
     cv::resize(mBgSubtractorBuffer, resizedBuffer, outputSize, 0, 0, cv::INTER_NEAREST);
 
+    // Same for priorityMat
+    cv::Mat resizedPriority;
+    cv::resize(priorityMat, resizedPriority, outputSize, 0, 0, cv::INTER_NEAREST);
+
     // We feed the image to the descriptor
     mDescriptor.setImage(input);
 
@@ -203,52 +236,12 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     if (mSvmValidPositions.capacity() != outputSize.width * outputSize.height)
         mSvmValidPositions.reserve(outputSize.width * outputSize.height);
 
-    int validPositions = 0;
-    for (int x = 0; x < resizedBuffer.cols; ++x)
-        for (int y = 0; y < resizedBuffer.rows; ++y)
-        {
-            if (resizedBuffer.at<uchar>(y, x) < 255)
-                continue;
 
-            vector<cv::Point>::iterator it = mSvmValidPositions.begin() + validPositions;
-            *it = cv::Point(x, y);
-            validPositions++;
-        }
-    int totalSamples = validPositions;
-
-    // We go randomly through this list
     vector<cv::Point> samples;
-    vector<float> description;
-    cv::Mat descriptionMat;
-
-    unsigned long long timePresent = duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count();
-    while (validPositions && timePresent - timeStart < mMaxTimePerFrame)
-    {
-        vector<cv::Point> points;
-        int nbrPoints = min(mMaxThreads, validPositions);
-        for (int i = 0; i < nbrPoints; ++i)
-        {
-            unsigned int random = mRng();
-            unsigned int position = random % validPositions;
-            vector<cv::Point>::iterator it = mSvmValidPositions.begin() + position;
-            cv::Point point = *it;
-            vector<cv::Point>::iterator lastIt = mSvmValidPositions.begin() + validPositions - 1;
-            swap(*lastIt, *it);
-
-            point.x *= mCellSize.width;
-            point.y *= mCellSize.height;
-
-            validPositions--;
-            points.push_back(point);
-        }
-
-        if (mIsPcaLoaded)
-            cv::parallel_for_(cv::Range(0, nbrPoints), Parallel_Detect(&points, &samples, mSvmMargin, &mDescriptor, &mSvm, &mPca));
-        else
-            cv::parallel_for_(cv::Range(0, nbrPoints), Parallel_Detect(&points, &samples, mSvmMargin, &mDescriptor, &mSvm, NULL));
-
-        timePresent = duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count();
-    }
+    // Detection through previous known positions
+    detectThroughMask(resizedPriority, samples, false);
+    // Detection through positions given by the BG subtractor
+    detectThroughMask(resizedBuffer, samples, true);
 
     // A single object can be detected by multiple windows.
     // We need to merge them
@@ -276,29 +269,26 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
     vector<Blob::properties> properties;
     for (int i = 0; i < samples.size(); ++i)
     {
-        Blob::properties propertie;
-        propertie.position.x = samples[i].x;
-        propertie.position.y = samples[i].y;
-        propertie.size = mRoiSize.width;
-        propertie.speed.x = 0.f;
-        propertie.speed.y = 0.f;
+        Blob::properties property;
+        property.position.x = samples[i].x;
+        property.position.y = samples[i].y;
+        property.size = mRoiSize.width;
+        property.speed.x = 0.f;
+        property.speed.y = 0.f;
 
-        properties.push_back(propertie);
+        properties.push_back(property);
     }
 
     // We want to track them
-    trackBlobs<Blob2D>(properties, mBlobs, mBlobLifetime, mKeepOldBlobs, mKeepMaxTime);
-
-    // We make sure that the filtering parameters are set
-    for (int i = 0; i < mBlobs.size(); ++i)
-    {
-        mBlobs[i].setParameter("processNoiseCov", mProcessNoiseCov);
-        mBlobs[i].setParameter("measurementNoiseCov", mMeasurementNoiseCov);
-    }
+    trackBlobs<Blob2D>(properties, mBlobs, mBlobLifetime, mKeepOldBlobs, mKeepMaxTime, mBlobTrackDistance, mOcclusionDistance);
 
     // We delete blobs which are outside the frame
     for (int i = 0; i < mBlobs.size();)
     {
+        // also, we make sure that the filtering parameters are set
+        mBlobs[i].setParameter("processNoiseCov", mProcessNoiseCov);
+        mBlobs[i].setParameter("measurementNoiseCov", mMeasurementNoiseCov);
+
         Blob::properties prop = mBlobs[i].getBlob();
         if (prop.position.x + prop.size/2 > input.cols || prop.position.x + prop.size/2 < 0
             || prop.position.y + prop.size/2 > input.rows || prop.position.y + prop.size/2 < 0)
@@ -307,12 +297,18 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
             i++;
     }
 
+
     cv::Mat resultMat = cv::Mat::zeros(input.rows, input.cols, input.type());
-    for_each (mBlobs.begin(), mBlobs.end(), [&] (Blob2D blob)
+    // cv::Mat resultMat = cv::Mat::ones(input.rows, input.cols, input.type());
+    for (auto& blob : mBlobs)
     {
         Blob::properties props = blob.getBlob();
+        // We draw a rectangle of visibility around the detected blobs
         cv::Rect rect(props.position.x, props.position.y, mRoiSize.width, mRoiSize.height);
-        cv::rectangle(resultMat, rect, cv::Scalar(1, 1, 1), CV_FILLED);
+        if (blob.getAge() > mKeepOldBlobs)
+            cv::rectangle(resultMat, rect, cv::Scalar(1, 1, 1), CV_FILLED);
+        else
+            cv::rectangle(resultMat, rect, cv::Scalar(1, 1, 0), CV_FILLED);
 
         if (mSaveSamples && blob.getAge() == mSaveSamplesAge
             && rect.x >= 0 && rect.y >= 0 && input.cols - rect.width > rect.x && input.rows - rect.height > rect.y)
@@ -322,22 +318,20 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
             sprintf(buffer, "sample_%i.png", blob.getId());
             cv::imwrite(buffer, cropSample);
         }
-    } );
+    }
 
     // The result is shown
     cv::multiply(input, resultMat, resultMat);
 
-    //if (mVerbose)
-    //   g_log(NULL, G_LOG_LEVEL_INFO, "%s - Evaluated ratio = %f", mClassName.c_str(), 1.f - (float)validPositions / (float)totalSamples);
 
     // Constructing the message
     mLastMessage.clear();
     mLastMessage.push_back(atom::IntValue::create((int)mBlobs.size()));
-    mLastMessage.push_back(atom::IntValue::create(7));
+    mLastMessage.push_back(atom::IntValue::create(8));
 
     for(int i = 0; i < mBlobs.size(); ++i)
     {
-        int lX, lY, lSize, lId, lAge, lLost;
+        int lX, lY, lSize, lId, lAge, lLost, lOccluded;
         float ldX, ldY;
         Blob::properties properties = mBlobs[i].getBlob();
         lX = (int)(properties.position.x);
@@ -347,14 +341,15 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
         lId = (int)mBlobs[i].getId();
         lAge = (int)mBlobs[i].getAge();
         lLost = (int)mBlobs[i].getLostDuration();
+        lOccluded = (int)properties.occluded;
 
         // Print the blob number on the blob
-        if (mVerbose)
-        {
-            char lNbrStr[8];
-            sprintf(lNbrStr, "%i", lId);
-            cv::putText(resultMat, lNbrStr, cv::Point(lX, lY), cv::FONT_HERSHEY_COMPLEX, 0.66, cv::Scalar(128.0, 128.0, 128.0, 128.0));
-        }
+        char lNbrStr[8];
+        cv::Scalar fontcolor;
+        if (lLost <= 0) fontcolor = cv::Scalar(255.0, 0.0, 0.0, 128.0);
+        else fontcolor = cv::Scalar(128.0, 128.0, 128.0, 128.0);
+        sprintf(lNbrStr, "%i", lId);
+        cv::putText(resultMat, lNbrStr, cv::Point(lX, lY), cv::FONT_HERSHEY_COMPLEX, 0.66, fontcolor);
 
         // Add this blob to the message
         mLastMessage.push_back(atom::IntValue::create(lId));
@@ -364,11 +359,91 @@ atom::Message Actuator_Hog::detect(const vector< Capture_Ptr > pCaptures)
         mLastMessage.push_back(atom::FloatValue::create(ldY));
         mLastMessage.push_back(atom::IntValue::create(lAge));
         mLastMessage.push_back(atom::IntValue::create(lLost));
+        mLastMessage.push_back(atom::IntValue::create(lOccluded));
     }
 
-    mOutputBuffer = resultMat.clone();
+    // add movement info
+    mLastMessage.push_back(atom::IntValue::create(movement));
+    
+
+    // if (finalDisplay == 1) {
+    //     cv::Mat in[] = {lEroded, lEroded, lEroded};
+    //     cv::merge(in, 3, lEroded);
+    //     mOutputBuffer = lEroded.clone();
+    // } else if (finalDisplay ==2) {
+    //     cv::Mat in[] = {mBgSubtractorBuffer, mBgSubtractorBuffer, mBgSubtractorBuffer};
+    //     cv::merge(in, 3, mBgSubtractorBuffer);
+    //     mOutputBuffer = mBgSubtractorBuffer.clone();
+
+    //mOutputBuffer = resultMat.clone();
+    mOutputBuffers.clear();
+    mOutputBuffers.push_back(resultMat);
+    mOutputBuffers.push_back(mBgSubtractorBuffer);
+    mOutputBuffers.push_back(lEroded);
 
     return mLastMessage;
+}
+
+/*************/
+void Actuator_Hog::detectThroughMask(cv::Mat& mask, vector<cv::Point>& samples, bool timeLimited)
+{
+    int validPositions = 0;
+    for (int x = 0; x < mask.cols; ++x)
+        for (int y = 0; y < mask.rows; ++y)
+            {
+                if (mask.at<uchar>(y, x) < 255)
+                    continue;
+
+                vector<cv::Point>::iterator it = mSvmValidPositions.begin() + validPositions;
+                *it = cv::Point(x, y);
+                validPositions++;
+            }
+    int totalSamples = validPositions;
+
+    unsigned long long timePresent = duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count();
+    while (validPositions && (timePresent - mTimeStart < mMaxTimePerFrame || !timeLimited))
+    {
+        vector<cv::Point> points;
+        int nbrPoints = min(mMaxThreads, validPositions);
+        for (int i = 0; i < nbrPoints; ++i)
+        {
+            unsigned int random = mRng();
+            unsigned int position = random % validPositions;
+            vector<cv::Point>::iterator it = mSvmValidPositions.begin() + position;
+            cv::Point point = *it;
+            vector<cv::Point>::iterator lastIt = mSvmValidPositions.begin() + validPositions - 1;
+            swap(*lastIt, *it);
+
+            point.x *= mCellSize.width;
+            point.y *= mCellSize.height;
+
+            validPositions--;
+            points.push_back(point);
+        }
+
+
+        if (mIsPcaLoaded)
+            cv::parallel_for_(cv::Range(0, nbrPoints), Parallel_Detect(&points, &samples, mSvmMargin, &mDescriptor, &mSvm, &mPca));
+        else
+            cv::parallel_for_(cv::Range(0, nbrPoints), Parallel_Detect(&points, &samples, mSvmMargin, &mDescriptor, &mSvm, NULL));
+
+        timePresent = duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count();
+    }
+
+    if (timeLimited && mVerbose && totalSamples != 0)
+        g_log(NULL, G_LOG_LEVEL_DEBUG, "%s - Evaluated ratio = %f", mClassName.c_str(), 1.f - (float)validPositions / (float)totalSamples);
+}
+
+/*************/
+vector<Capture_Ptr> Actuator_Hog::getOutput() const
+{
+    vector<Capture_Ptr> outputVec;
+    for (auto& buffer : mOutputBuffers)
+    {
+        outputVec.push_back(Capture_2D_Mat_Ptr(new Capture_2D_Mat(buffer.clone())));
+    }
+
+    return outputVec;
 }
 
 /*************/
@@ -427,11 +502,30 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
         if (readParam(pMessage, distance))
             mBlobMergeDistance = max(16.f, distance);
     }
+    else if (cmd == "maxTrackDistance")
+    {
+        float distance;
+        if (readParam(pMessage, distance))
+            mBlobTrackDistance = max(0.f, pow(distance, 2.f));
+    }
+    else if (cmd == "occlusionDistance")
+    {
+        float distance;
+        if (readParam(pMessage, distance))
+            mOcclusionDistance = max(0.f, pow(distance, 2.f));
+    }
+    else if (cmd == "bgScale")
+    {
+        float scale;
+        if (readParam(pMessage, scale))
+            mBgScale = min(1.f, max(0.f, scale));
+    }
     else if (cmd == "filterSize")
     {
         float filterSize;
-        if (readParam(pMessage, filterSize))
+        if (readParam(pMessage, filterSize)) {
             mFilterSize = max(1, (int)filterSize);
+        }
     }
     else if (cmd == "roiSize")
     {
@@ -469,6 +563,30 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
             mCellSize = cellSize;
         updateDescriptorParams();
     }
+    else if (cmd == "cellMaxSize")
+    {
+        string cellStr;
+        if (!readParam<string>(pMessage, cellStr))
+            return;
+
+        cv::Size_<int> cellSize;
+        sscanf(cellStr.c_str(), "size_%ix%i", &(cellSize.width), &(cellSize.height));
+        if (cellSize.width > 0 && cellSize.height > 0)
+            mCellMaxSize = cellSize;
+        updateDescriptorParams();
+    }
+    else if (cmd == "cellStep")
+    {
+        string step;
+        if (!readParam<string>(pMessage, step))
+            return;
+
+        cv::Size_<float> cellStep;
+        sscanf(step.c_str(), "size_%fx%f", &(cellStep.width), &(cellStep.height));
+        if (cellStep.width >= 1.f && cellStep.height >= 1.f)
+            mCellStep = cellStep;
+        updateDescriptorParams();
+    }
     else if (cmd == "bins")
     {
         float bins;
@@ -489,8 +607,9 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
     else if (cmd == "lifetime")
     {
         float lifetime;
-        if (readParam(pMessage, lifetime))
+        if (readParam(pMessage, lifetime)) {
             mBlobLifetime = lifetime;
+        }
     }
     else if (cmd == "keepOldBlobs")
     {
@@ -537,4 +656,6 @@ void Actuator_Hog::setParameter(atom::Message pMessage)
 void Actuator_Hog::updateDescriptorParams()
 {
     mDescriptor.setHogParams(mRoiSize, mBlockSize, mCellSize, mBins, false, Descriptor_Hog::L2_NORM, mSigma);
+    if (mCellMaxSize.width >= mCellSize.width && mCellMaxSize.height >= mCellSize.height && mCellStep.width >= 1.f && mCellStep.height >= 1.f)
+        mDescriptor.setMultiscaleParams(mCellSize, mCellMaxSize, mCellStep);
 }

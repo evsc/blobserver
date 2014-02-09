@@ -46,6 +46,8 @@ class Actuator_Hog : public Actuator
         atom::Message detect(const std::vector< Capture_Ptr > pCaptures);
         void setParameter(atom::Message pMessage);
 
+        std::vector<Capture_Ptr> getOutput() const;
+
     private:
         static std::string mClassName;
         static std::string mDocumentation;
@@ -53,7 +55,10 @@ class Actuator_Hog : public Actuator
 
         std::vector<Blob2D> mBlobs; // Vector of detected and tracked blobs
 
+        unsigned long long mTimeStart; // Beginning of a detection frame
+
         // Some filtering parameters
+        float mBgScale; // Scale to resize the input image for Bg subtraction detection
         int mFilterSize;
         int mFilterDilateCoeff;
 
@@ -61,6 +66,7 @@ class Actuator_Hog : public Actuator
         int mBlobLifetime;
         int mKeepOldBlobs, mKeepMaxTime; // Parameters to set when we need blobs to be kept even when not detected anymore
         float mProcessNoiseCov, mMeasurementNoiseCov;
+        float mMaximumVelocity; // Maximum speed of the detected blobs
 
         // Descriptor to identify objects...
         Descriptor_Hog mDescriptor;
@@ -68,6 +74,8 @@ class Actuator_Hog : public Actuator
         cv::Size_<int> mRoiSize;
         cv::Size_<int> mBlockSize;
         cv::Size_<int> mCellSize;
+        cv::Size_<int> mCellMaxSize;
+        cv::Size_<float> mCellStep;
         unsigned int mBins;
         float mSigma;
 
@@ -85,17 +93,24 @@ class Actuator_Hog : public Actuator
         // Background subtractor, used to select window of interest
         // to feed to the SVM
         cv::BackgroundSubtractorMOG2 mBgSubtractor;
+        int movement;
 
         // Various variables
         cv::Mat mBgSubtractorBuffer;
+        cv::Mat lEroded;
         cv::RNG mRng;
         float mBlobMergeDistance; // Distance to considerer two blobs as one
+        float mBlobTrackDistance; // Maximum distance to associate a blob with a new measure
         bool mSaveSamples; // If true, save samples older than mSaveSamplesAge
         unsigned long mSaveSamplesAge;
+        float mOcclusionDistance;
+
+        std::vector<cv::Mat> mOutputBuffers;
 
         // Methods
         void make();
         void updateDescriptorParams();
+        void detectThroughMask(cv::Mat& mask, std::vector<cv::Point>& samples, bool timeLimited);
 };
 
 REGISTER_ACTUATOR(Actuator_Hog)

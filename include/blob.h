@@ -38,6 +38,9 @@ class Blob
         cv::Mat colorHist;
         float orientation;
         float size;
+        bool occluded;
+
+        properties() : occluded(false) {}
     };
 
     public:
@@ -56,14 +59,16 @@ class Blob
         void setLifetime(int time) {mTotalLifetime = mLifetime = time;}
         void renewLifetime()
         {
-            if (mLifetime < 0)
-                mLostDuration = 0;
+            // if (mLifetime < 0)
+            //     mLostDuration = 0;
+            mLostDuration = 0;
             mLifetime = mTotalLifetime;
         }
         void reduceLifetime()
         {
-            if (mLifetime < 0)
-                mLostDuration++;
+            // if (mLifetime < 0)
+            //     mLostDuration++;
+            mLostDuration++;
             mLifetime--;
         }
         int getLifetime() const {return mLifetime;}
@@ -72,7 +77,10 @@ class Blob
         unsigned long getAge() const {return mAge;}
         unsigned long getLostDuration() const {return mLostDuration;}
 
-        properties getBlob();
+        void setOccluded() {mProperties.occluded = true;}
+        void setUnoccluded() {mProperties.occluded = false;}
+
+        properties getBlob() {return mProperties;}
         bool isUpdated();
 
     protected:
