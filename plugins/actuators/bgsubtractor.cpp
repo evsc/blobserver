@@ -44,6 +44,7 @@ void Actuator_BgSubtractor::make()
     mProcessNoiseCov = 1e-6;
     mMeasurementNoiseCov = 1e-4;
     mMaxDistanceForColorDiff = 16;
+    mBlobTrackDistance = 100;
 
     mLearningRate = 300;
     mMinArea = 0.f;
@@ -133,7 +134,7 @@ atom::Message Actuator_BgSubtractor::detect(const vector< Capture_Ptr > pCapture
     }
 
     // We want to track them
-    trackBlobs<Blob2DColor>(properties, mBlobs, mBlobLifetime, mKeepOldBlobs, mKeepMaxTime);
+    trackBlobs<Blob2DColor>(properties, mBlobs, mBlobLifetime, mKeepOldBlobs, mKeepMaxTime, mBlobTrackDistance);
 
     // We make sure that the filtering parameters are set
     for (int i = 0; i < mBlobs.size(); ++i)
@@ -262,6 +263,12 @@ void Actuator_BgSubtractor::setParameter(atom::Message pMessage)
         float dist;
         if (readParam(pMessage, dist))
             mMaxDistanceForColorDiff = abs(dist);
+    }
+    else if (cmd == "maxTrackDistance")
+    {
+        float distance;
+        if (readParam(pMessage, distance))
+            mBlobTrackDistance = max(0.f, pow(distance, 2.f));
     }
     else if (cmd == "learningTime")
     {
