@@ -61,6 +61,7 @@ class Actuator_BgSubtractor : public Actuator
         int mKeepOldBlobs, mKeepMaxTime; // Parameters to set when we need blobs to be kept even when not detected anymore
         float mProcessNoiseCov, mMeasurementNoiseCov;
         float mMaxDistanceForColorDiff;
+        float mBlobTrackDistance; // Maximum distance to associate a blob with a new measure
 
         // Background subtractor, used to select window of interest
         // to feed to the SVM
