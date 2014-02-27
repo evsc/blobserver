@@ -154,7 +154,8 @@ atom::Message Actuator_BgSubtractor::detect(const vector< Capture_Ptr > pCapture
             i++;
     }
 
-    cv::Mat resultMat = cv::Mat::zeros(input.rows, input.cols, CV_8UC3);
+    // cv::Mat resultMat = cv::Mat::zeros(input.rows, input.cols, CV_8UC3);
+    cv::Mat resultMat = cv::Mat::ones(input.rows, input.cols, CV_8UC3); // BLUE
     for_each (mBlobs.begin(), mBlobs.end(), [&] (Blob2DColor blob)
     {
         Blob::properties props = blob.getBlob();
