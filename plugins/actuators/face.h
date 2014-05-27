@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Emmanuel Durand
+ * Copyright (C) 2014 Emmanuel Durand
  *
  * This file is part of blobserver.
  *
@@ -18,26 +18,27 @@
  */
 
 /*
- * @actuator_bgsubtractor.h
- * The Actuator_BgSubtractor class.
+ * @face.h
+ * The Actuator_Face class.
  */
 
-#ifndef BGSUBTRACTOR_H
-#define BGSUBTRACTOR_H
+#ifndef FACE_H
+#define FACE_H
 
 #include <vector>
+#include <opencv2/objdetect/objdetect.hpp>
 
 #include "config.h"
 #include "actuator.h"
 #include "blob_2D_color.h"
 
 /*************/
-// Class Actuator_BgSubtractor
-class Actuator_BgSubtractor : public Actuator
+// Class Actuator_Face
+class Actuator_Face : public Actuator
 {
     public:
-        Actuator_BgSubtractor();
-        Actuator_BgSubtractor(int pParam);
+        Actuator_Face();
+        Actuator_Face(int pParam);
 
         static std::string getClassName() {return mClassName;}
         static std::string getDocumentation() {return mDocumentation;}
@@ -55,31 +56,30 @@ class Actuator_BgSubtractor : public Actuator
         // Some filtering parameters
         int mFilterSize;
         int mFilterDilateCoeff;
-        
-        // Maximum portion of the image considered as FG, above which detection
-        // is not continued (to handle global lighting change for example)
-        float mMaxFGPortion;
 
         // Tracking and movement filtering parameters
         int mBlobLifetime;
         int mKeepOldBlobs, mKeepMaxTime; // Parameters to set when we need blobs to be kept even when not detected anymore
         float mProcessNoiseCov, mMeasurementNoiseCov;
         float mMaxDistanceForColorDiff;
-        float mBlobTrackDistance; // Maximum distance to associate a blob with a new measure
 
-        // Background subtractor, used to select window of interest
-        // to feed to the SVM
-        cv::BackgroundSubtractorMOG2 mBgSubtractor;
+        // Eye and face detection objects
+        cv::CascadeClassifier mFaceCascade;
+        cv::CascadeClassifier mEyeCascade;
+        cv::CascadeClassifier mMouthCascade;
 
-        // Various variables
-        cv::Mat mBgSubtractorBuffer;
-        float mLearningRate, mLearningTime;
-        float mMinArea, mMaxArea;
+        struct Person
+        {
+            cv::Rect face;
+            std::vector<cv::Rect> eyes;
+            cv::Rect mouth;
+        };
+        std::vector<Person> mPersons;
 
         // Methods
         void make();
 };
 
-REGISTER_ACTUATOR(Actuator_BgSubtractor)
+REGISTER_ACTUATOR(Actuator_Face)
 
 #endif // BGSUBTRACTOR_H
