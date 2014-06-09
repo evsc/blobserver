@@ -71,6 +71,13 @@ class Actuator_BgSubtractor : public Actuator
         // to feed to the SVM
         cv::BackgroundSubtractorMOG2 mBgSubtractor;
 
+        // regulate filterSize based on blobcount
+        bool regulateFilterSize;
+        int rMinFilterSize;
+        int rMaxFilterSize;
+        int rMinBlobCount;
+        int rMaxBlobCount;
+
         // Various variables
         cv::Mat mBgSubtractorBuffer;
         float mLearningRate, mLearningTime;

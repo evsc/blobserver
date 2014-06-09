@@ -51,6 +51,12 @@ void Actuator_BgSubtractor::make()
     mLearningRate = 300;
     mMinArea = 0.f;
     mMaxArea = 65535.f;
+
+    regulateFilterSize = false;
+    rMinFilterSize = 0;
+    rMaxFilterSize = 10;
+    rMinBlobCount = 0;
+    rMaxBlobCount = 30;
 }
 
 /*************/
@@ -87,6 +93,27 @@ atom::Message Actuator_BgSubtractor::detect(const vector< Capture_Ptr > pCapture
         learnTimeElapsed++;
         g_log(NULL, G_LOG_LEVEL_INFO, "%s: Background learning done", mClassName.c_str());
     }
+
+    // regulate filterSize based on blobcount
+    if (regulateFilterSize) {
+        int lastBlobCount = mBlobs.size();
+        int newFilterSize = mFilterSize;
+        if (lastBlobCount > rMaxBlobCount) {
+            newFilterSize = rMaxFilterSize;
+        } else if (lastBlobCount < rMinBlobCount) {
+            newFilterSize = rMinFilterSize;
+        } else {
+            newFilterSize = rMinFilterSize + (rMaxFilterSize - rMinFilterSize) * (lastBlobCount - rMinBlobCount) / (rMaxBlobCount - rMinBlobCount);
+        }
+
+        if (newFilterSize != mFilterSize) {
+            g_log(NULL, G_LOG_LEVEL_INFO, "%s: filterSize regulated to %i", mClassName.c_str(), newFilterSize);
+            mFilterSize = newFilterSize;
+        }
+    }
+
+
+
 
     // Erode and dilate to suppress noise
     cv::Mat lEroded;
@@ -243,6 +270,20 @@ void Actuator_BgSubtractor::setParameter(atom::Message pMessage)
         float filterSize;
         if (readParam(pMessage, filterSize))
             mFilterSize = max(1, (int)filterSize);
+    }
+    if (cmd == "regulateFilterSize")
+    {
+        // 0 0 4 15 30 ... on/off minFilterSize maxFilterSize minBlobCount maxBlobCount
+        float pos[5];
+        for (int i = 0; i < 5; ++i)
+            if (!readParam(pMessage, pos[i], i + 1))
+                return;
+
+        regulateFilterSize = pos[0];
+        rMinFilterSize = pos[1];
+        rMaxFilterSize = pos[2];
+        rMinBlobCount = pos[3];
+        rMaxBlobCount = pos[4];
     }
     else if (cmd == "filterDilateCoeff")
     {
