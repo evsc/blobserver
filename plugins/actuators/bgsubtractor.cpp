@@ -107,6 +107,11 @@ atom::Message Actuator_BgSubtractor::detect(const vector< Capture_Ptr > pCapture
         }
 
         if (newFilterSize != mFilterSize) {
+            if (newFilterSize > mFilterSize) {
+                newFilterSize = mFilterSize+1;
+            } else if(newFilterSize < mFilterSize) {
+                newFilterSize = mFilterSize-1;
+            }
             g_log(NULL, G_LOG_LEVEL_INFO, "%s: filterSize regulated to %i", mClassName.c_str(), newFilterSize);
             mFilterSize = newFilterSize;
         }
